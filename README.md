@@ -229,6 +229,26 @@ lore). Entries unlock from live progress — explore, solve, befriend, restore.
 | `npm run lint:fix` | Auto-fix lint issues |
 | `npm test` | Run Vitest test suite |
 | `npm run format` | Format source with Prettier |
+| `npm run test:e2e` | Run Playwright E2E tests |
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
+- Reporting bugs & requesting features
+- Pull request process & commit conventions
+- Code style, testing, and review process
+
+Quick start:
+```bash
+git clone https://github.com/mlynarskim/Terminal-Quest.git
+cd Terminal-Quest
+npm install
+npm run dev
+```
+
+## License
+
+This project is licensed under the MIT License - see [LICENSE](LICENSE) for details.
 
 ## Project Structure
 

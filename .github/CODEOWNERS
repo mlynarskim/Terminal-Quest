@@ -1,0 +1,35 @@
+# Global owners
+* @mlynarskim
+
+# Game logic - core systems
+/src/game/commandProcessor.js @mlynarskim
+/src/game/commandRegistry.js @mlynarskim
+/src/game/fileSystem.js @mlynarskim
+/src/game/story.js @mlynarskim
+/src/game/prestige.js @mlynarskim
+
+# Game logic - features
+/src/game/processes.js @mlynarskim
+/src/game/crafting.js @mlynarskim
+/src/game/ciphers.js @mlynarskim
+/src/game/radio.js @mlynarskim
+/src/game/weekly.js @mlynarskim
+/src/game/bestiary.js @mlynarskim
+/src/game/daemon.js @mlynarskim
+
+# State & hooks
+/src/hooks/useGameState.js @mlynarskim
+
+# UI Components
+/src/components/ @mlynarskim
+/src/App.jsx @mlynarskim
+
+# Configuration & build
+/vite.config.ts @mlynarskim
+/eslint.config.js @mlynarskim
+/tsconfig.json @mlynarskim
+/package.json @mlynarskim
+
+# Tests
+/src/**/*.test.js @mlynarskim
+/e2e/ @mlynarskim
