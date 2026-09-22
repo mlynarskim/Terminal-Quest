@@ -816,6 +816,10 @@ export default function App() {
 
             <TerminalPanel title="STORE_PREVIEW" className="flex-1">
               <div className="text-[10px] flex flex-col gap-1">
+                <div className="flex justify-between text-(--text-warning)">
+                  <span>☕ BUY COFFEE (support dev)</span>
+                  <span>→ buycoffee.to</span>
+                </div>
                 <div className="flex justify-between">
                   <span>[1] BOX</span>
                   <span>50B</span>

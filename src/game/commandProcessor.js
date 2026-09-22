@@ -696,6 +696,14 @@ export const createCommandProcessor = (ctx) => {
 
     buy: (args) => {
       const buyItem = args[0];
+      if (buyItem === 'coffee') {
+        addGlitchedHistory({
+          type: 'system',
+          text: 'Opening buycoffee.to in new tab... thank you for the support! ☕',
+        });
+        window.open('https://buycoffee.to/buycoffe88', '_blank', 'noopener,noreferrer');
+        return;
+      }
       if (buyItem) {
         const themeMatch = resolveThemePurchase(buyItem);
         if (themeMatch) {
@@ -730,7 +738,7 @@ export const createCommandProcessor = (ctx) => {
       } else if (!buyItem) {
         addGlitchedHistory({
           type: 'output',
-          text: 'Shop: box (50 bits), cat_food (30 bits), decoder (150 bits), key (200 bits), theme_amber (300), theme_cyan (250), theme_violet (400)',
+          text: 'Shop: coffee (free — support), box (50 bits), cat_food (30 bits), decoder (150 bits), key (200 bits), theme_amber (300), theme_cyan (250), theme_violet (400)',
         });
       } else {
         addGlitchedHistory({ type: 'error', text: 'Item not in stock.' });
