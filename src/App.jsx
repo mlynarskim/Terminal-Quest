@@ -524,7 +524,7 @@ export default function App() {
             </div>
 
             {/* Right Side Panels */}
-            <div className="hidden lg:flex flex-1 flex-col gap-2 overflow-y-auto scrollbar-hide">
+            <div className="lg:flex flex-1 flex-col gap-2 overflow-y-auto scrollbar-hide">
               <TerminalPanel title="OBJECTIVE">
                 <div className="text-[10px] space-y-1">
                   <div className="text-(--text-warning) font-bold">{objective.title}</div>
@@ -603,7 +603,7 @@ export default function App() {
                         sounds.execute();
                         processCommand('save');
                       }}
-                      className="w-full py-1 border border-(--text-primary) text-[9px] hover:bg-(--text-primary) hover:text-black transition-colors"
+                      className="w-full py-3 border border-(--text-primary) text-[9px] hover:bg-(--text-primary) hover:text-black transition-colors touch-manipulation min-h-[44px]"
                     >
                       EXPORT_BACKUP.EXE
                     </button>
@@ -612,7 +612,7 @@ export default function App() {
                         sounds.execute();
                         processCommand('load');
                       }}
-                      className="w-full py-1 border border-(--text-bits) text-[9px] text-(--text-bits) hover:bg-(--text-bits) hover:text-black transition-colors"
+                      className="w-full py-3 border border-(--text-bits) text-[9px] text-(--text-bits) hover:bg-(--text-bits) hover:text-black transition-colors touch-manipulation min-h-[44px]"
                     >
                       IMPORT_BACKUP.SYS
                     </button>
@@ -779,8 +779,8 @@ export default function App() {
           </div>
 
           {/* Bottom Layout Utilities */}
-          <div className="hidden md:flex p-2 gap-2 min-h-[120px]">
-            <TerminalPanel title="FILE_SYSTEM_VISUALIZER" className="flex-[2]">
+          <div className="p-2 gap-2 min-h-[120px] flex flex-col md:flex-row">
+            <TerminalPanel title="FILE_SYSTEM_VISUALIZER" className="md:flex-[2] w-full">
               <div className="flex gap-6 overflow-x-auto py-2 px-4 scrollbar-hide">
                 {getEntry(state.currentDir)?.children.map((name, i) => {
                   const childPath = resolvePath(state.currentDir, name);
@@ -814,7 +814,7 @@ export default function App() {
               </div>
             </TerminalPanel>
 
-            <TerminalPanel title="STORE_PREVIEW" className="flex-1">
+            <TerminalPanel title="STORE_PREVIEW" className="md:flex-1 w-full">
               <div className="text-[10px] flex flex-col gap-1">
                 <div className="flex justify-between">
                   <span>[1] BOX</span>
@@ -846,7 +846,7 @@ export default function App() {
               </div>
             </TerminalPanel>
 
-            <TerminalPanel title="ITEM_PREVIEW" className="flex-1">
+            <TerminalPanel title="ITEM_PREVIEW" className="md:flex-1 w-full">
               <div className="flex flex-col items-center justify-center h-full">
                 <div className="wireframe-cube" />
                 <div className="text-[8px] text-center mt-2 opacity-60">ACTIVE_ITEM_SCANNER</div>
@@ -860,7 +860,7 @@ export default function App() {
               <span className="text-(--text-secondary) mr-2">{state.currentDir}&gt;</span>
               <input
                 type="text"
-                className="flex-1 bg-transparent border-none outline-none text-(--text-primary)"
+                className="flex-1 bg-transparent border-none outline-none text-(--text-primary) text-[14px] min-h-[44px]"
                 value={input}
                 onChange={(e) => {
                   setInput(e.target.value);
@@ -869,6 +869,7 @@ export default function App() {
                 }}
                 onKeyDown={handleCommand}
                 enterKeyHint="send"
+                inputMode="text"
               />
             </div>
           </div>

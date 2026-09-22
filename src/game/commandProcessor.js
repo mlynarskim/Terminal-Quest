@@ -90,6 +90,118 @@ import {
   WEEKLY_REWARD_BITS,
 } from './constants';
 
+const HELP_CATEGORIES = {
+  processes: `PROCESS MANAGEMENT
+  ps          List active processes (PID, name, age, risk level)
+  kill <pid>  Terminate a process for Bits (dangerous = bonus)
+  run <type>  Spawn a process manually [monitor|stress|shadow|idle]
+
+Processes age each command. Overheated processes trigger glitches.
+Kill them before they overheat for near-miss bonus Bits.`,
+
+  crafting: `CRAFTING / COMBINE
+  combine <item1> <item2>  Merge two items into something new
+
+Recipes:
+  box + decoder     = loot box (120 Bits)
+  key + decoder     = master key (deep archive access)
+  box + key         = safe (200 Bits)
+  decoder + key     = grid artifact (100 Bits)
+  master_key + decoder = root access (300 Bits)
+  artifact + master_key = core crystal (500 Bits)
+
+Items are consumed. Experiment to discover all recipes.`,
+
+  story: `STORY ARC
+  story              Show current arc status and objective
+  repair             Repair one corrupted sector (1000 Bits, stage 1+)
+  restore [choice]   Final protocol: rewrite | preserve
+
+Stages:
+  0 DISCOVERY  - Find cat fragments (3/3), build trust (80%+)
+  1 REPAIR     - Repair 4 sectors (4000 Bits + key)
+  2 RESTORED   - Choose ending: rewrite | preserve
+  NG+ unlocks archives, recompile (prestige) available.`,
+
+  ciphers: `CIPHERS / DECRYPTION
+  decrypt <path>  Decode encrypted files (needs key or decoder)
+
+5 cipher files hidden in: /logs, /archives, /system, /home, /users/explorer
+Algorithms: ROT (letter shift), HEX (byte encoding), XOR (bitwise)
+Each rewards Bits + lore. Buy key (200B) or decoder (150B) first.`,
+
+  radio: `RADIO NETWORK
+  radio on|off           Toggle radio
+  radio tune <station>   Switch: lofi | static | encrypted | mining
+  radio stations         List all stations
+
+Stations:
+  LO-FI       Calm, reduces glitch chance
+  STATIC      Raw data, more transmissions
+  ENCRYPTED   Lore-rich transmissions
+  MINING      +Bits per catch
+
+Leave radio on while exploring for passive Bits/lore.`,
+
+  weekly: `WEEKLY CHALLENGE
+  weekly          View this week's challenge + leaderboard
+
+Fixed seed per week. Challenge types: mine Bits, commands, dirs, processes, games, achievements, cat feeds, ciphers.
+Top the bot leaderboard (rank #1) for 150 Bits reward (once/week).
+Progress counts from everything you already do.`,
+
+  bestiary: `BESTIARY / GALLERY
+  bestiary        Browse discovered entries + progress bar
+
+Categories: FILE_SPECIMENS, COMMAND_GLYPHS, GRID_FAUNA, SYSTEM_ORGANS, GRID_LORE
+Entries unlock from live progress (explore, solve, befriend, restore).
+100% = Completionist achievement. "bestiary" shows progress bar.`,
+
+  prestige: `PRESTIGE / RECOMPILE
+  recompile       Reset world for permanent bonus (stage 2 + 2000 lifetime Bits)
+
+Levels:
+  1 RECOMPILED    +15% Bits, +200 base
+  2 REWRITTEN     +auto-feed cat, +30% Bits
+  3 TRANSCENDED   +free decoder on start
+  4 GRID_TWIN     +2x Bits from processes
+  5 PHANTOM_NODE  +storm immunity
+  ...
+
+Achievements per level. Progress persists across runs.`,
+
+  tutorial: `TUTORIAL
+  tutorial              Show current step / progress
+  tutorial skip         Opt out of tutorial
+  tutorial restart      Replay tutorial from step 1
+
+5 guided steps: help -> ls -> cat readme.txt -> cd /logs -> ask hello
+Reward: 50 Bits + "First Boot" achievement.
+"tutorial skip" to opt out anytime.`,
+
+  default: `TERMINAL QUEST - COMMAND REFERENCE
+
+Navigation:     ls, cd, pwd, search
+Files:          cat, decode, decrypt
+Bits/Shop:      bits, buy, combine, inventory
+Cat:            feed, pet, talk, follow, listen
+Processes:      ps, kill, run
+Crafting:       combine
+Story:          story, repair, restore, recompile
+Ciphers:        decrypt
+Radio:          radio (on/off/tune/stations)
+Weekly:         weekly
+Bestiary:       bestiary
+Automation:     cron, record, play
+Dailies:        daily
+Stats/Meta:     stats, rank, time, tips, tutorial
+Utility:        help, clear, save, load, edit, notes, rm, theme, time
+
+Type "help <category>" for detailed help on any category.
+Categories: processes, crafting, story, ciphers, radio, weekly, bestiary, prestige, tutorial
+Type "help --all" for complete command list.`,
+};
+
 const SYSTEM_COMMENTARY = [
   'that file was not supposed to be visible',
   'you missed something earlier',
@@ -340,7 +452,24 @@ export const createCommandProcessor = (ctx) => {
     },
 
     help: (args) => {
-      const isAdvanced = args[0] === '--all';
+      const category = args[0];
+      const isAdvanced = category === '--all';
+
+      // Category-specific help
+      if (category && category !== '--all') {
+        const categoryHelp = HELP_CATEGORIES[category.toLowerCase()];
+        if (categoryHelp) {
+          addGlitchedHistory({ type: 'output', text: categoryHelp });
+          return;
+        }
+        addGlitchedHistory({
+          type: 'error',
+          text: `Unknown help category: ${category}. Available: ${Object.keys(HELP_CATEGORIES).join(', ')}`,
+        });
+        return;
+      }
+
+      // General help (existing behavior)
       const visibleNames = Object.entries(COMMAND_DEFINITIONS)
         .filter(
           ([_name, def]) =>
@@ -355,7 +484,7 @@ export const createCommandProcessor = (ctx) => {
       if (!isAdvanced)
         addHistory({
           type: 'system',
-          text: 'HINT: Type "help --all" to see system-level commands.',
+          text: 'HINT: Type "help --all" to see system-level commands, or "help <category>" for category-specific help (processes, crafting, story, ciphers, radio, weekly, bestiary, prestige, tutorial).',
         });
     },
 
