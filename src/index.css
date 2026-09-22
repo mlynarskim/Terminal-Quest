@@ -1,0 +1,311 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Centralized palette tokens. Use e.g. text-primary, bg-secondary,
+     border-error instead of hardcoded hex so themes can be switched in one place. */
+  --color-primary: #00ff66;
+  --color-primary-dim: #006633;
+  --color-secondary: #008f4c;
+  --color-error: #ff4d4d;
+  --color-warning: #ffd54f;
+  --color-bits: #66ccff;
+  --color-ghost: #e0e0e0;
+}
+
+:root {
+  --bg-color: #050505;
+  --text-primary: #00ff66;
+  --text-secondary: #008f4c;
+  --text-error: #ff4d4d;
+  --text-warning: #ffd54f;
+  --text-bits: #66ccff;
+  --text-white: #e0e0e0;
+  --border-glow: 0 0 5px rgba(0, 255, 102, 0.4);
+  --text-glow: 0 0 8px rgba(0, 255, 102, 0.6);
+}
+
+/* Theme skins — the .crt-container carries one of these classes and restyles
+   the whole terminal chrome (window borders, cursor, text accents). */
+.skin-amber {
+  --bg-color: #0a0500;
+  --text-primary: #ffb000;
+  --text-secondary: #a86a00;
+  --text-error: #ff7a6a;
+  --text-warning: #ffd54f;
+  --text-bits: #ffd54f;
+  --text-white: #ffe9c0;
+  --border-glow: 0 0 5px rgba(255, 176, 0, 0.4);
+  --text-glow: 0 0 8px rgba(255, 176, 0, 0.45);
+}
+.skin-cyan {
+  --bg-color: #000a12;
+  --text-primary: #33e0ff;
+  --text-secondary: #0a7a96;
+  --text-error: #ff7a9e;
+  --text-warning: #ffe082;
+  --text-bits: #a5f3ff;
+  --text-white: #d0f4ff;
+  --border-glow: 0 0 5px rgba(51, 224, 255, 0.35);
+  --text-glow: 0 0 8px rgba(51, 224, 255, 0.4);
+}
+.skin-violet {
+  --bg-color: #0d0518;
+  --text-primary: #c084fc;
+  --text-secondary: #7c4dd2;
+  --text-error: #fb7185;
+  --text-warning: #fbbf24;
+  --text-bits: #a78bfa;
+  --text-white: #e9d5ff;
+  --border-glow: 0 0 5px rgba(192, 132, 252, 0.4);
+  --text-glow: 0 0 8px rgba(192, 132, 252, 0.45);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+  text-shadow: var(--text-glow);
+}
+
+#root {
+  height: 100%;
+}
+
+/* CRT Effects */
+.crt-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.crt-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%,
+    rgba(0, 0, 0, 0.15) 50%
+  ),
+  linear-gradient(
+    90deg,
+    rgba(255, 0, 0, 0.05),
+    rgba(0, 255, 0, 0.02),
+    rgba(0, 0, 255, 0.05)
+  );
+  background-size: 100% 4px, 4px 100%;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.crt-scanlines {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 0%,
+    rgba(0, 255, 102, 0.05) 50%,
+    rgba(18, 16, 16, 0) 100%
+  );
+  background-size: 100% 20px;
+  animation: scanline 12s linear infinite;
+  pointer-events: none;
+  z-index: 1001;
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+.crt-flicker {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(18, 16, 16, 0.008);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1002;
+  animation: flicker 0.15s infinite;
+}
+
+@keyframes flicker {
+  0% { opacity: 0.1; }
+  50% { opacity: 0.02; }
+  100% { opacity: 0.08; }
+}
+
+.screen-noise {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: 999;
+}
+
+/* Utilities */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.terminal-area {
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-secondary) transparent;
+}
+
+.terminal-window {
+  background: var(--bg-color);
+  border: 1px solid var(--text-secondary);
+  box-shadow: inset 0 0 10px color-mix(in srgb, var(--text-secondary) 20%, transparent);
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-window-header {
+  background: color-mix(in srgb, var(--text-secondary) 20%, transparent);
+  padding: 2px 8px;
+  font-size: 10px;
+  border-bottom: 1px solid var(--text-secondary);
+  text-transform: uppercase;
+  color: var(--text-white);
+  letter-spacing: 1px;
+}
+
+.terminal-window-content {
+  padding: 8px;
+  font-size: 11px;
+  overflow: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: #050505;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-secondary);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-primary);
+}
+
+/* Animations */
+.glitch-text {
+  animation: glitch 0.3s infinite;
+  display: inline-block;
+}
+
+@keyframes glitch {
+  0% { transform: translate(0); text-shadow: -1px -1px 0 #ff00ea, 1px 1px 0 #00ffff; }
+  25% { transform: translate(-1px, 1px); text-shadow: -1px -1px 0 #ff00ea, 1px 1px 0 #00ffff; }
+  50% { transform: translate(1px, -1px); text-shadow: 1px 1px 0 #ff00ea, -1px -1px 0 #00ffff; }
+  75% { transform: translate(-1px, -1px); text-shadow: -1px -1px 0 #ff00ea, 1px 1px 0 #00ffff; }
+  100% { transform: translate(1px, 1px); text-shadow: 1px 1px 0 #ff00ea, -1px -1px 0 #00ffff; }
+}
+
+.cursor-blink {
+  display: inline-block;
+  width: 8px;
+  height: 1.2em;
+  background-color: var(--text-primary);
+  vertical-align: middle;
+  animation: blink 0.8s step-end infinite;
+  box-shadow: var(--text-glow);
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.status-online {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background-color: var(--text-primary);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--text-primary);
+  margin-left: 6px;
+  animation: pulse-online 2s ease-in-out infinite;
+}
+
+@keyframes pulse-online {
+  0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 10px var(--text-primary); }
+  50% { opacity: 0.3; transform: scale(0.8); box-shadow: 0 0 2px var(--text-primary); }
+}
+
+.wireframe-cube {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--text-primary);
+  position: relative;
+  transform: rotateX(45deg) rotateZ(45deg);
+  animation: rotateCube 10s linear infinite;
+  margin: 10px auto;
+}
+
+.wireframe-cube::before {
+  content: '';
+  position: absolute;
+  top: -10px; left: -10px; right: -10px; bottom: -10px;
+  border: 1px solid var(--text-secondary);
+  opacity: 0.5;
+}
+
+.glitch-line {
+  animation: glitch-tearing 0.2s cubic-bezier(.25,.46,.45,.94) both infinite;
+  color: var(--text-primary);
+  text-shadow: 2px 0 #ff4d4d, -2px 0 #66ccff;
+}
+
+@keyframes glitch-tearing {
+  0% { transform: translate(0) }
+  20% { transform: translate(-2px, 1px) }
+  40% { transform: translate(-2px, -1px) }
+  60% { transform: translate(2px, 1px) }
+  80% { transform: translate(2px, -1px) }
+  100% { transform: translate(0) }
+}
+
+/* Accessibility: respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .crt-scanlines,
+  .crt-flicker,
+  .glitch-text,
+  .cursor-blink,
+  .status-online,
+  .wireframe-cube,
+  .glitch-line,
+  .screen-noise {
+    animation: none !important;
+  }
+}
