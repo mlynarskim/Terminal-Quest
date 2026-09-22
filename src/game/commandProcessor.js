@@ -29,7 +29,7 @@ import { resolveCombine } from './crafting';
 import { resolveDaemonResponse } from './daemon';
 import { createCronJob, tickCron, dueJobs, formatCronJob } from './cron';
 import { ENCRYPTED_FILES, encryptFile, decryptFile } from './ciphers';
-import { prestigeTitle, prestigeBitsBonus, canPrestige } from './prestige';
+import { prestigeTitle, prestigeBitsBonus, canPrestige, getPrestigePerks } from './prestige';
 import { RADIO_STATIONS, pickTransmission } from './radio';
 import { getWeeklyChallenge, scoreWeekly } from './weekly';
 import { discoveryPercent, mergedBestiary, BESTIARY_CATEGORIES } from './bestiary';
@@ -1971,6 +1971,7 @@ export const createCommandProcessor = (ctx) => {
       const newLevel = (s.prestige || 0) + 1;
       const title = prestigeTitle(newLevel);
       const bonus = prestigeBitsBonus(newLevel);
+      const perk = getPrestigePerks(newLevel);
       addGlitchedHistory({ type: 'system', text: 'RECOMPILING THE GRID...' });
       setIsGlitching(true);
       setTimeout(() => {
@@ -1984,6 +1985,12 @@ export const createCommandProcessor = (ctx) => {
           type: 'output',
           text: `RECOMPILATION COMPLETE. LEVEL: ${newLevel} — TITLE: ${title}. +${bonus} BITS.`,
         });
+        if (perk.effects) {
+          const effects = Object.entries(perk.effects)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(', ');
+          addHistory({ type: 'system', text: `PERK UNLOCKED: ${perk.name} — ${perk.desc} (${effects})` });
+        }
         if (!s.achievements.includes(`PRESTIGE_${newLevel}`)) {
           addHistory({
             type: 'achievement',

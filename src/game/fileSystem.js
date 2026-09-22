@@ -12,6 +12,7 @@ export const virtualFS = {
       'fragment_02.tmp',
       'fragment_03.tmp',
       'secrets.txt.enc',
+      'vigenere_diary.enc',
     ],
   },
   '/home/readme.txt': {
@@ -63,9 +64,14 @@ export const virtualFS = {
     content: '[ENCRYPTED — HEX] Use "decrypt /home/secrets.txt.enc" to decode.',
     isEncrypted: true,
   },
+  '/home/vigenere_diary.enc': {
+    type: 'file',
+    content: '[ENCRYPTED — VIGENERE] Use "decrypt /home/vigenere_diary.enc" to decode.',
+    isEncrypted: true,
+  },
   '/system': {
     type: 'dir',
-    children: ['core.sys', 'protocols.cfg', 'cipher_beta.sys'],
+    children: ['core.sys', 'protocols.cfg', 'cipher_beta.sys', 'base64_log.enc'],
     restricted: true,
   },
   '/system/core.sys': {
@@ -81,6 +87,11 @@ export const virtualFS = {
   '/system/cipher_beta.sys': {
     type: 'file',
     content: '[ENCRYPTED — XOR] Use "decrypt /system/cipher_beta.sys" to decode.',
+    isEncrypted: true,
+  },
+  '/system/base64_log.enc': {
+    type: 'file',
+    content: '[ENCRYPTED — BASE64] Use "decrypt /system/base64_log.enc" to decode.',
     isEncrypted: true,
   },
   '/logs': {
@@ -101,9 +112,19 @@ export const virtualFS = {
     content: '[ENCRYPTED — ROT7] Use "decrypt /logs/cipher_alpha.log" to decode.',
     isEncrypted: true,
   },
+  '/logs/base64_log.enc': {
+    type: 'file',
+    content: '[ENCRYPTED — BASE64] Use "decrypt /logs/base64_log.enc" to decode.',
+    isEncrypted: true,
+  },
+  '/logs/vigenere_msg.enc': {
+    type: 'file',
+    content: '[ENCRYPTED — VIGENERE] Use "decrypt /logs/vigenere_msg.enc" to decode.',
+    isEncrypted: true,
+  },
   '/archives': {
     type: 'dir',
-    children: ['old_user_data.zip', 'deleted_memories.txt', 'restore.db', 'encrypted.dat'],
+    children: ['old_user_data.zip', 'deleted_memories.txt', 'restore.db', 'encrypted.dat', 'vigenere_msg.enc', 'base64_archive.enc'],
   },
   '/archives/old_user_data.zip': { type: 'file', content: 'ARCHIVE CORRUPTED. NEED DECODER v2.0' },
   '/archives/deleted_memories.txt': {
@@ -113,6 +134,16 @@ export const virtualFS = {
   '/archives/encrypted.dat': {
     type: 'file',
     content: '[ENCRYPTED — HEX] Use "decrypt /archives/encrypted.dat" to decode.',
+    isEncrypted: true,
+  },
+  '/archives/vigenere_msg.enc': {
+    type: 'file',
+    content: '[ENCRYPTED — VIGENERE] Use "decrypt /archives/vigenere_msg.enc" to decode.',
+    isEncrypted: true,
+  },
+  '/archives/base64_archive.enc': {
+    type: 'file',
+    content: '[ENCRYPTED — BASE64] Use "decrypt /archives/base64_archive.enc" to decode.',
     isEncrypted: true,
   },
   '/users': { type: 'dir', children: ['explorer', 'admin', 'guest'] },

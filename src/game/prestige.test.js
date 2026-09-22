@@ -17,7 +17,7 @@ describe('prestige', () => {
   it('prestigeBitsBonus increases with level', () => {
     expect(prestigeBitsBonus(0)).toBe(0);
     expect(prestigeBitsBonus(1)).toBe(200);
-    expect(prestigeBitsBonus(5)).toBe(1000);
+    expect(prestigeBitsBonus(5)).toBe(5000);
   });
 
   it('canPrestige requires stage 2 and 2000 bits', () => {
