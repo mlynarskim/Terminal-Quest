@@ -262,3 +262,43 @@ src/
   hooks/           useGameState (state management + persistence)
   lib/             audioSystem (Web Audio sound effects)
 ```
+
+---
+
+## Products That Helped Make This Awesome
+
+This project stands on the shoulders of giants. Huge thanks to the creators and maintainers of:
+
+### Core Framework & Build
+- **[React](https://react.dev/)** — UI library that makes interactive terminals feel native
+- **[Vite](https://vite.dev/)** — Lightning-fast build tool and dev server
+- **[TypeScript](https://www.typescriptlang.org/)** — Type safety that catches bugs before they ship
+
+### Styling & UI
+- **[Tailwind CSS](https://tailwindcss.com/)** — Utility-first styling that makes CRT aesthetics maintainable
+- **[Lucide React](https://lucide.dev/)** — Beautiful, consistent icons for the terminal UI
+- **[Motion (Framer Motion)](https://motion.dev/)** — Smooth animations for boot sequences and transitions
+
+### Testing & Quality
+- **[Vitest](https://vitest.dev/)** — Blazing fast unit tests with native ESM support
+- **[Playwright](https://playwright.dev/)** — Reliable E2E testing across browsers and devices
+- **[ESLint](https://eslint.org/)** + **[Prettier](https://prettier.io/)** — Code quality and consistency
+
+### Audio & Effects
+- **Web Audio API** (native) — Procedural sound effects without external dependencies
+
+### Hosting & Analytics
+- **[Vercel](https://vercel.com/)** — Zero-config deployment, edge functions, analytics
+- **[@vercel/analytics](https://vercel.com/docs/analytics)** — Privacy-friendly analytics (no cookies)
+
+### Error Tracking (Optional)
+- **[Sentry](https://sentry.io/)** — Error monitoring in production
+
+### Inspiration & Community
+- The **retro computing** and **terminal enthusiast** communities on Reddit, Hacker News, and GitHub
+- Classic games: *Hacknet*, *Uplink*, *Else Heart.Break()*, *Duskers* — for proving terminals can tell stories
+- **ASCII art** archives and **ANSI art** communities for visual inspiration
+
+---
+
+*Built with ☕ and late-night debugging sessions. If you use any of these tools in your project, consider giving them a ⭐ on GitHub or a shoutout on social media — open source thrives on recognition.*

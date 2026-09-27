@@ -31,6 +31,12 @@ const INITIAL_STATE = {
     bitsSpent: 0,
     catInteractions: 0,
     dirsVisited: [],
+    killsCount: 0,
+    stormSurvivals: 0,
+    radioCatches: 0,
+    gameStartTime: null,
+    gameCompleted: false,
+    gameCompletedTime: null,
   },
   dailyStats: { date: null, commands: 0, bitsEarned: 0, catInteractions: 0, dirsVisited: [] },
   daily: { date: null, quests: [], streak: 0, completedDate: null },
@@ -571,6 +577,50 @@ export const useGameState = () => {
     []
   );
 
+  // --- Achievement tracking ---
+
+  const setGameStartTime = useCallback(() =>
+    setState((prev) => ({
+      ...prev,
+      stats: {
+        ...prev.stats,
+        gameStartTime: prev.stats.gameStartTime || Date.now(),
+      },
+    })),
+  []);
+
+  const setGameCompleted = useCallback(() =>
+    setState((prev) => ({
+      ...prev,
+      stats: {
+        ...prev.stats,
+        gameCompleted: true,
+        gameCompletedTime: Date.now(),
+      },
+    })),
+  []);
+
+  const incrementKills = useCallback(() =>
+    setState((prev) => ({
+      ...prev,
+      stats: { ...prev.stats, killsCount: (prev.stats.killsCount || 0) + 1 },
+    })),
+  []);
+
+  const incrementStormSurvivals = useCallback(() =>
+    setState((prev) => ({
+      ...prev,
+      stats: { ...prev.stats, stormSurvivals: (prev.stats.stormSurvivals || 0) + 1 },
+    })),
+  []);
+
+  const incrementRadioCatches = useCallback(() =>
+    setState((prev) => ({
+      ...prev,
+      stats: { ...prev.stats, radioCatches: (prev.stats.radioCatches || 0) + 1 },
+    })),
+  []);
+
   return {
     state,
     addHistory,
@@ -607,5 +657,10 @@ export const useGameState = () => {
     setEncrypted,
     updateWeekly,
     updateTutorial,
+    setGameStartTime,
+    setGameCompleted,
+    incrementKills,
+    incrementStormSurvivals,
+    incrementRadioCatches,
   };
 };

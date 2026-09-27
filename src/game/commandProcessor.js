@@ -32,7 +32,7 @@ import { ENCRYPTED_FILES, encryptFile, decryptFile } from './ciphers';
 import { prestigeTitle, prestigeBitsBonus, canPrestige, getPrestigePerks } from './prestige';
 import { RADIO_STATIONS, pickTransmission } from './radio';
 import { getWeeklyChallenge, scoreWeekly } from './weekly';
-import { discoveryPercent, mergedBestiary, BESTIARY_CATEGORIES } from './bestiary';
+import { discoveryPercent, mergedBestiary, BESTIARY_CATEGORIES, initBestiary } from './bestiary';
 import { stormSurvived } from './storm';
 import {
   DELAY_SHORT_MS,
@@ -84,9 +84,12 @@ import {
   MACRO_MAX_RECORDING_COMMANDS,
   RADIO_TRANSMISSION_CHANCE,
   RADIO_BITS_PER_CATCH,
-  STORM_CHANCE,
+STORM_CHANCE,
   STORM_DURATION_MS,
   STORM_SURVIVAL_REWARD,
+  ACHIEVEMENT_SPEEDRUNNER_TIME_MS,
+  ACHIEVEMENT_STORM_CHASER_COUNT,
+  ACHIEVEMENT_RADIO_HEAD_COUNT,
   WEEKLY_REWARD_BITS,
 } from './constants';
 
@@ -1681,6 +1684,7 @@ export const createCommandProcessor = (ctx) => {
       if (isDangerous(target) && !state().achievements.includes('Process Reaper')) {
         addHistory({ type: 'achievement', text: '[ACHIEVEMENT UNLOCKED] Process Reaper' });
       }
+      ctx.incrementKills();
     },
     run: (args) => {
       const typeId = args[0] || 'monitor';
@@ -2341,6 +2345,7 @@ export const createCommandProcessor = (ctx) => {
             type: 'achievement',
             text: `[ACHIEVEMENT UNLOCKED] Storm Survivor +${STORM_SURVIVAL_REWARD} Bits`,
           });
+          ctx.incrementStormSurvivals();
         }
         ctx.updateStorm({ active: false, startedAt: null });
       } else {
@@ -2361,6 +2366,7 @@ export const createCommandProcessor = (ctx) => {
       if (station.effect === 'bitsBonus') {
         ctx.addBits(RADIO_BITS_PER_CATCH, null);
         addHistory({ type: 'output', text: `+${RADIO_BITS_PER_CATCH} BITS from radio catch.` });
+        ctx.incrementRadioCatches();
       }
     }
 
@@ -2376,7 +2382,42 @@ export const createCommandProcessor = (ctx) => {
         processCommand(job.command);
       }
     }
-  };
+    }
+
+  // --- Achievement Checks ---
+  const s = state();
+  
+  // Speedrunner: completed game in under 30 minutes
+  if (s.stats.gameCompleted && !s.achievements.includes('Speedrunner')) {
+    const playTime = s.stats.gameCompletedTime - (s.stats.gameStartTime || 0);
+    if (playTime < ACHIEVEMENT_SPEEDRUNNER_TIME_MS) {
+      addHistory({ type: 'achievement', text: '[ACHIEVEMENT UNLOCKED] Speedrunner' });
+    }
+  }
+
+  // Pacifist: completed game with zero kills
+  if (s.stats.gameCompleted && (s.stats.killsCount || 0) === 0 && !s.achievements.includes('Pacifist')) {
+    addHistory({ type: 'achievement', text: '[ACHIEVEMENT UNLOCKED] Pacifist' });
+  }
+
+  // Completionist: 100% bestiary
+  if (!s.achievements.includes('Completionist')) {
+    const b = s.bestiary && Object.keys(s.bestiary).length ? s.bestiary : initBestiary();
+    const pct = discoveryPercent(b);
+    if (pct >= 100) {
+      addHistory({ type: 'achievement', text: '[ACHIEVEMENT UNLOCKED] Completionist' });
+    }
+  }
+
+  // Storm Chaser: survived 5 storms
+  if ((s.stats.stormSurvivals || 0) >= ACHIEVEMENT_STORM_CHASER_COUNT && !s.achievements.includes('Storm Chaser')) {
+    addHistory({ type: 'achievement', text: '[ACHIEVEMENT UNLOCKED] Storm Chaser' });
+  }
+
+  // Radio Head: caught 100 radio transmissions
+  if ((s.stats.radioCatches || 0) >= ACHIEVEMENT_RADIO_HEAD_COUNT && !s.achievements.includes('Radio Head')) {
+    addHistory({ type: 'achievement', text: '[ACHIEVEMENT UNLOCKED] Radio Head' });
+  }
 
   return processCommand;
 };

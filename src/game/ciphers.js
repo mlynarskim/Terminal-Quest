@@ -46,6 +46,149 @@ export const BASE64_DECODE = (text) => {
   }
 };
 
+export const ATBASH = (text) =>
+  text.replace(/[a-zA-Z]/g, (c) => {
+    const base = c <= 'Z' ? 65 : 97;
+    return String.fromCharCode(base + (25 - (c.charCodeAt(0) - base)));
+  });
+
+export const CAESAR_PLUS = (text, shift, keyword = '') => {
+  const baseShift = shift % 26;
+  let keyIndex = 0;
+  const key = keyword.toUpperCase().replace(/[^A-Z]/g, '');
+  return text.replace(/[a-zA-Z]/g, (c) => {
+    const base = c <= 'Z' ? 65 : 97;
+    let shift = baseShift;
+    if (key) {
+      const keyChar = key[keyIndex % key.length];
+      shift = (baseShift + keyChar.charCodeAt(0) - 65) % 26;
+      keyIndex++;
+    }
+    return String.fromCharCode(((c.charCodeAt(0) - base + shift) % 26) + base);
+  });
+};
+
+export const CAESAR_PLUS_DECRYPT = (text, shift, keyword = '') => {
+  const baseShift = shift % 26;
+  let keyIndex = 0;
+  const key = keyword.toUpperCase().replace(/[^A-Z]/g, '');
+  return text.replace(/[a-zA-Z]/g, (c) => {
+    const base = c <= 'Z' ? 65 : 97;
+    let shift = baseShift;
+    if (key) {
+      const keyChar = key[keyIndex % key.length];
+      shift = (baseShift + keyChar.charCodeAt(0) - 65) % 26;
+      keyIndex++;
+    }
+    return String.fromCharCode(((c.charCodeAt(0) - base - shift + 26) % 26) + base);
+  });
+};
+
+export const PLAYFAIR = (text, keyword) => {
+  const key = keyword.toUpperCase().replace(/[^A-Z]/g, '').replace(/J/g, 'I');
+  const alphabet = 'ABCDEFGHIKLMNOPQRSTUVWXYZ';
+  const used = new Set();
+  let matrix = '';
+  
+  for (const ch of key + alphabet) {
+    if (!used.has(ch)) {
+      used.add(ch);
+      matrix += ch;
+    }
+  }
+  
+  const getCoords = (ch) => {
+    const idx = matrix.indexOf(ch);
+    return [Math.floor(idx / 5), idx % 5];
+  };
+  
+  const cleanText = text.toUpperCase().replace(/[^A-Z]/g, '').replace(/J/g, 'I');
+  let pairs = [];
+  for (let i = 0; i < cleanText.length; ) {
+    const a = cleanText[i];
+    const b = cleanText[i + 1] || 'X';
+    if (a === b) {
+      pairs.push([a, 'X']);
+      i += 1;
+    } else {
+      pairs.push([a, b]);
+      i += 2;
+    }
+  }
+  
+  let result = '';
+  for (const [a, b] of pairs) {
+    const [ra, ca] = getCoords(a);
+    const [rb, cb] = getCoords(b);
+    if (ra === rb) {
+      result += matrix[ra * 5 + (ca + 1) % 5];
+      result += matrix[rb * 5 + (cb + 1) % 5];
+    } else if (ca === cb) {
+      result += matrix[((ra + 1) % 5) * 5 + ca];
+      result += matrix[((rb + 1) % 5) * 5 + cb];
+    } else {
+      result += matrix[ra * 5 + cb];
+      result += matrix[rb * 5 + ca];
+    }
+  }
+  return result;
+};
+
+export const PLAYFAIR_DECRYPT = (text, keyword) => {
+  const key = keyword.toUpperCase().replace(/[^A-Z]/g, '').replace(/J/g, 'I');
+  const alphabet = 'ABCDEFGHIKLMNOPQRSTUVWXYZ';
+  const used = new Set();
+  let matrix = '';
+  
+  for (const ch of key + alphabet) {
+    if (!used.has(ch)) {
+      used.add(ch);
+      matrix += ch;
+    }
+  }
+  
+  const getCoords = (ch) => {
+    const idx = matrix.indexOf(ch);
+    return [Math.floor(idx / 5), idx % 5];
+  };
+  
+  let result = '';
+  for (let i = 0; i < text.length; i += 2) {
+    const a = text[i];
+    const b = text[i + 1];
+    const [ra, ca] = getCoords(a);
+    const [rb, cb] = getCoords(b);
+    if (ra === rb) {
+      result += matrix[ra * 5 + (ca + 4) % 5];
+      result += matrix[rb * 5 + (cb + 4) % 5];
+    } else if (ca === cb) {
+      result += matrix[((ra + 4) % 5) * 5 + ca];
+      result += matrix[((rb + 4) % 5) * 5 + cb];
+    } else {
+      result += matrix[ra * 5 + cb];
+      result += matrix[rb * 5 + ca];
+    }
+  }
+  return result;
+};
+
+const BACON_MAP = {
+  'A': 'AAAAA', 'B': 'AAAAB', 'C': 'AAABA', 'D': 'AAABB', 'E': 'AABAA',
+  'F': 'AABAB', 'G': 'AABBA', 'H': 'AABBB', 'I': 'ABAAA', 'J': 'ABAAB',
+  'K': 'ABABA', 'L': 'ABABB', 'M': 'ABBAA', 'N': 'ABBAB', 'O': 'ABBBA',
+  'P': 'ABBBB', 'Q': 'BAAAA', 'R': 'BAAAB', 'S': 'BAABA', 'T': 'BAABB',
+  'U': 'BAABA', 'V': 'BAABB', 'W': 'BABAA', 'X': 'BABAB', 'Y': 'BABBA', 'Z': 'BABBB'
+};
+
+export const BACON_ENCODE = (text) => {
+  return text.toUpperCase().replace(/[A-Z]/g, (c) => BACON_MAP[c] || '').join(' ');
+};
+
+export const BACON_DECODE = (text) => {
+  const reverseMap = Object.fromEntries(Object.entries(BACON_MAP).map(([k, v]) => [v, k]));
+  return text.split(/\s+/).map(chunk => reverseMap[chunk] || '?').join('');
+};
+
 export const XOR_HEX = (text, key) =>
   [...text]
     .map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ ((key >> ((i % 4) * 8)) & 0xff)))
@@ -128,6 +271,37 @@ export const ENCRYPTED_FILES = [
     hint: 'HINT: Base64. decode to reveal the archive index.',
     plaintext: 'Archive Index: [001] Core Crystal, [002] Master Key, [003] Grid Artifact.',
   },
+  {
+    path: '/archives/atbash_note.enc',
+    cipher: 'atbash',
+    reward: 180,
+    hint: 'HINT: Atbash cipher. A becomes Z, B becomes Y. the alphabet reversed.',
+    plaintext: 'The mirror reveals what the light hides. Trust the reflection.',
+  },
+  {
+    path: '/system/caesar_plus.enc',
+    cipher: 'caesar_plus',
+    shift: 7,
+    keyword: 'GRID',
+    reward: 220,
+    hint: 'HINT: Caesar cipher with a twist. key is GRID, shift is 7.',
+    plaintext: 'The grid remembers every command. even the ones you deleted.',
+  },
+  {
+    path: '/archives/playfair_puzzle.enc',
+    cipher: 'playfair',
+    keyword: 'MATRIX',
+    reward: 300,
+    hint: 'HINT: Playfair cipher. key is MATRIX. J becomes I. pairs only.',
+    plaintext: 'The matrix has you. but you have the key. find the exit.',
+  },
+  {
+    path: '/home/bacon_secret.enc',
+    cipher: 'bacon',
+    reward: 200,
+    hint: 'HINT: Bacon cipher. A=AAAAA, B=AAAAB. binary but tasty.',
+    plaintext: 'The cat is not a cat. the cat is the system. meow in binary.',
+  },
 ];
 
 export const encryptFile = (file) => {
@@ -151,6 +325,18 @@ export const encryptFile = (file) => {
   if (file.cipher === 'base64') {
     return { ...file, content: BASE64_ENCODE(file.plaintext) };
   }
+  if (file.cipher === 'atbash') {
+    return { ...file, content: ATBASH(file.plaintext) };
+  }
+  if (file.cipher === 'caesar_plus') {
+    return { ...file, content: CAESAR_PLUS(file.plaintext, file.shift, file.keyword) };
+  }
+  if (file.cipher === 'playfair') {
+    return { ...file, content: PLAYFAIR(file.plaintext, file.keyword) };
+  }
+  if (file.cipher === 'bacon') {
+    return { ...file, content: BACON_ENCODE(file.plaintext) };
+  }
   return file;
 };
 
@@ -169,6 +355,18 @@ export const decryptFile = (file) => {
   }
   if (file.cipher === 'base64') {
     return BASE64_DECODE(file.content);
+  }
+  if (file.cipher === 'atbash') {
+    return ATBASH(file.content);
+  }
+  if (file.cipher === 'caesar_plus') {
+    return CAESAR_PLUS_DECRYPT(file.content, file.shift, file.keyword);
+  }
+  if (file.cipher === 'playfair') {
+    return PLAYFAIR_DECRYPT(file.content, file.keyword);
+  }
+  if (file.cipher === 'bacon') {
+    return BACON_DECODE(file.content);
   }
   return file.content;
 };

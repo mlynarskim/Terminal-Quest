@@ -192,3 +192,24 @@ export const STORM_CHANCE = 0.12;
 export const STORM_DURATION_MS = 45_000;
 export const STORM_GLITCH_MULTIPLIER = 3;
 export const STORM_SURVIVAL_REWARD = 80;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Achievements
+// ──────────────────────────────────────────────────────────────────────────────
+export const ACHIEVEMENT_SPEEDRUNNER_TIME_MS = 30 * 60 * 1000; // 30 minutes
+export const ACHIEVEMENT_STORM_CHASER_COUNT = 5;
+export const ACHIEVEMENT_RADIO_HEAD_COUNT = 100;
+export const ACHIEVEMENT_PACIFIST = 'Pacifist';
+export const ACHIEVEMENT_COMPLETIONIST = 'Completionist';
+export const ACHIEVEMENT_SPEEDRUNNER = 'Speedrunner';
+export const ACHIEVEMENT_STORM_CHASER = 'Storm Chaser';
+export const ACHIEVEMENT_RADIO_HEAD = 'Radio Head';
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Minigames
+// ──────────────────────────────────────────────────────────────────────────────
+export const GAME_MEMORY_GRID_SIZE = 4;
+export const GAME_MEMORY_TIME_LIMIT_MS = 60_000;
+export const GAME_SNAKE_GRID_SIZE = 16;
+export const GAME_SNAKE_SPEED_MS = 200;
+export const GAME_2048_GRID_SIZE = 4;
