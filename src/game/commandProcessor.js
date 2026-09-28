@@ -5,7 +5,10 @@ import { createGlitchedWriter } from './glitchedHistory';
 import { isCatAvailable } from './catUtils';
 import { computeRank } from './ranks';
 import { evaluateAllQuests, getTodayStr } from './dailyQuest';
-import { crashWinnings, judgeCrashGuess, registerCatch, startCrash, startLeak } from './games';
+import {
+  crashWinnings, judgeCrashGuess, registerCatch, startCrash, startLeak,
+  startSnake, start2048, startMemory, changeSnakeDirection, move2048, flipMemoryCard,
+} from './games';
 import { resolveSkin, resolveThemePurchase, SKIN_LIST } from './skins';
 import { repairStatus, stageInfo, storyUnlocks, STORY_ENDINGS, endingInfo } from './story';
 import { getTimeOfDay, randomTip, TIME_PHRASES } from './tips';
@@ -1920,9 +1923,66 @@ export const createCommandProcessor = (ctx) => {
         }
         return;
       }
+      if (gameName === 'snake') {
+        if (activeGameRef.current) {
+          addGlitchedHistory({
+            type: 'error',
+            text: 'A session is already active. type "stop" to end it.',
+          });
+          return;
+        }
+        activeGameRef.current = startSnake();
+        addGlitchedHistory({
+          type: 'output',
+          text: 'SNAKE INITIATED. Use arrow keys or swipe to control. Eat food to grow.',
+        });
+        addGlitchedHistory({
+          type: 'system',
+          text: 'Mobile: Swipe or use on-screen arrows. Desktop: Arrow keys.',
+        });
+        return;
+      }
+      if (gameName === '2048') {
+        if (activeGameRef.current) {
+          addGlitchedHistory({
+            type: 'error',
+            text: 'A session is already active. type "stop" to end it.',
+          });
+          return;
+        }
+        activeGameRef.current = start2048();
+        addGlitchedHistory({
+          type: 'output',
+          text: '2048 INITIATED. Merge tiles to reach 2048.',
+        });
+        addGlitchedHistory({
+          type: 'system',
+          text: 'Mobile: Swipe or use on-screen arrows. Desktop: Arrow keys.',
+        });
+        return;
+      }
+      if (gameName === 'memory') {
+        if (activeGameRef.current) {
+          addGlitchedHistory({
+            type: 'error',
+            text: 'A session is already active. type "stop" to end it.',
+          });
+          return;
+        }
+        activeGameRef.current = startMemory();
+        addGlitchedHistory({
+          type: 'output',
+          text: 'MEMORY INITIATED. Match all pairs before time runs out.',
+        });
+        addGlitchedHistory({
+          type: 'system',
+          text: 'Mobile: Tap cards to flip. Desktop: Click cards.',
+        });
+        return;
+      }
       addHistory({
         type: 'error',
-        text: `Unknown macro or game: "${name}". Use "play crash", "play leak", or a saved macro name.`,
+        text: `Unknown macro or game: "${name}". Use "play crash|leak|snake|2048|memory", or a saved macro name.`,
       });
     },
 
@@ -2116,7 +2176,34 @@ export const createCommandProcessor = (ctx) => {
     },
   };
 
-  const processCommand = (cmdStr) => {
+// --- Mobile Game Event Listeners ---
+if (typeof window !== 'undefined') {
+  // Snake direction control
+  window.addEventListener('snake-direction', (e) => {
+    const game = activeGameRef.current;
+    if (game && game.type === 'snake') {
+      activeGameRef.current = changeSnakeDirection(game, e.detail);
+    }
+  });
+
+  // 2048 movement control
+  window.addEventListener('2048-move', (e) => {
+    const game = activeGameRef.current;
+    if (game && game.type === '2048') {
+      activeGameRef.current = move2048(game, e.detail);
+    }
+  });
+
+  // Memory card flip
+  window.addEventListener('memory-flip', (e) => {
+    const game = activeGameRef.current;
+    if (game && game.type === 'memory') {
+      activeGameRef.current = flipMemoryCard(game, e.detail);
+    }
+  });
+}
+
+const processCommand = (cmdStr) => {
     let currentInput = cmdStr.trim().toLowerCase();
     if (!currentInput) return;
 

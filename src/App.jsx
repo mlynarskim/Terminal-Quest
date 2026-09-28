@@ -16,8 +16,9 @@ import { getObjective } from './game/objective';
 import { mergedBestiary, discoveryPercent, totalEntries, discoveredCount } from './game/bestiary';
 import { getWeeklyChallenge, scoreWeekly } from './game/weekly';
 import { prestigeTitle } from './game/prestige';
-import { isDangerous } from './game/processes';
+import MobileGameControls from './components/MobileGameControls';
 import { sounds } from './lib/audioSystem';
+import { isDangerous } from './game/processes';
 import {
   HINT_CHECK_INTERVAL_MS,
   SPECIAL_COMMENTARY_MIN_MS,
@@ -851,10 +852,13 @@ export default function App() {
                 <div className="wireframe-cube" />
                 <div className="text-[8px] text-center mt-2 opacity-60">ACTIVE_ITEM_SCANNER</div>
               </div>
-            </TerminalPanel>
-          </div>
+</TerminalPanel>
+        </div>
 
-          {/* Mobile Input (Sticky) */}
+        {/* Mobile Game Controls Overlay */}
+        <MobileGameControls />
+
+        {/* Mobile Input (Sticky) */}
           <div className="md:hidden border-t border-(--text-secondary) p-2 bg-(--bg-color)">
             <div className="flex items-center text-[12px]">
               <span className="text-(--text-secondary) mr-2">{state.currentDir}&gt;</span>
