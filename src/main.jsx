@@ -1,5 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { Analytics } from '@vercel/analytics/react';
 import App from './App.jsx';
 import './index.css';
 
@@ -12,13 +13,6 @@ if ('serviceWorker' in navigator) {
       }).catch((registrationError) => {
         console.log('SW registration failed: ', registrationError);
       });
-  });
-}
-
-// Vercel Analytics (privacy-friendly, no cookies)
-if (import.meta.env.PROD) {
-  import('@vercel/analytics/react').then(({ Analytics: _Analytics }) => {
-    // Injected via wrapper below
   });
 }
 
@@ -45,5 +39,6 @@ if (import.meta.env.PROD && import.meta.env.VITE_SENTRY_DSN) {
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
+    <Analytics />
   </React.StrictMode>
 );
