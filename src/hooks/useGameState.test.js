@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isValidState } from '../hooks/useGameState';
+import { isValidState, hydrateState, SAVE_VERSION } from '../hooks/useGameState';
 
 describe('isValidState', () => {
   it('accepts a well-formed state object', () => {
@@ -43,5 +43,35 @@ describe('isValidState', () => {
         solvedPuzzles: [],
       })
     ).toBe(false); // missing cat
+  });
+});
+
+describe('hydrateState', () => {
+  it('fills in everything a partial save is missing', () => {
+    const state = hydrateState({ bits: 42, currentDir: '/logs', cat: { trust: 10 } });
+    expect(state.bits).toBe(42);
+    expect(state.currentDir).toBe('/logs');
+    expect(state.cat.trust).toBe(10);
+    expect(state.cat.unlocked).toBe(false);
+    expect(state.settings).toEqual({ chaos: true });
+    expect(state.saveVersion).toBe(SAVE_VERSION);
+    expect(Array.isArray(state.history)).toBe(true);
+  });
+
+  it('keeps arrays from the save and ignores undefined values', () => {
+    const state = hydrateState({ inventory: ['key'], achievements: undefined });
+    expect(state.inventory).toEqual(['key']);
+    expect(state.achievements).toEqual([]);
+  });
+
+  it('falls back to the defaults for anything that is not an object', () => {
+    expect(hydrateState(null).currentDir).toBe('/home');
+    expect(hydrateState('nope').bits).toBe(0);
+  });
+
+  it('merges nested objects instead of replacing them', () => {
+    const state = hydrateState({ stats: { bitsEarned: 900 } });
+    expect(state.stats.bitsEarned).toBe(900);
+    expect(state.stats.commandsRun).toBe(0);
   });
 });

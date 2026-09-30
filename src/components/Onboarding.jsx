@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { sounds } from '../lib/audioSystem';
+import { GAME_VERSION } from '../game/constants';
 
 const INITIAL_POOL = [
   'INITIALIZING SYSTEM...',
-  'BOOTING OS v0.1.7...',
+  `BOOTING OS v${GAME_VERSION}...`,
   'WAKING UP CORES...',
   'LOADING FIRMWARE...',
 ];
@@ -195,6 +196,19 @@ const BootSequence = ({ onComplete }) => {
 };
 
 const StartScreen = ({ onStart }) => {
+  // A terminal game that cannot be started with the keyboard is a website.
+  useEffect(() => {
+    const handleKey = (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        sounds.execute();
+        onStart();
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onStart]);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -228,6 +242,7 @@ const StartScreen = ({ onStart }) => {
         <div className="text-[10px] opacity-40 mt-12 text-center space-y-1">
           <p>SOME COMMANDS ARE HIDDEN. CURIOSITY IS MANDATORY.</p>
           <p>FIRST CONTACT? AN INTERACTIVE TUTORIAL GUIDES YOUR FIRST 5 COMMANDS.</p>
+          <p className="animate-pulse">PRESS [ENTER] OR CLICK TO JACK IN</p>
         </div>
       </div>
     </motion.div>

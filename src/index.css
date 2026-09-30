@@ -296,6 +296,53 @@ body {
   100% { transform: translate(0) }
 }
 
+/* Feature 3 — glitch events. The container gains .glitch-active while an event
+   is open, which desaturates, tears and doubles the whole grid. */
+.glitch-active {
+  animation: glitch-frame-shift 0.6s steps(2, end) infinite;
+  filter: hue-rotate(8deg) saturate(1.2);
+}
+
+.glitch-active .crt-scanlines {
+  opacity: 0.9;
+}
+
+.glitch-active .screen-noise {
+  opacity: 0.35;
+  animation: noise-drift 0.4s steps(4, end) infinite;
+}
+
+.glitch-active .terminal-line {
+  animation: glitch-tearing 0.3s cubic-bezier(.25,.46,.45,.94) both infinite;
+}
+
+.glitch-active .glitch-overlay {
+  animation: glitch-sweep 1.2s linear infinite;
+}
+
+@keyframes glitch-frame-shift {
+  0% { transform: translate3d(0, 0, 0) }
+  20% { transform: translate3d(-1px, 1px, 0) }
+  40% { transform: translate3d(1px, -1px, 0) }
+  60% { transform: translate3d(-1px, -1px, 0) }
+  80% { transform: translate3d(1px, 1px, 0) }
+  100% { transform: translate3d(0, 0, 0) }
+}
+
+@keyframes glitch-sweep {
+  0% { opacity: 0.05; transform: translateY(-4%) }
+  50% { opacity: 0.18; transform: translateY(4%) }
+  100% { opacity: 0.05; transform: translateY(-4%) }
+}
+
+@keyframes noise-drift {
+  0% { transform: translate(0, 0) }
+  25% { transform: translate(-2%, 1%) }
+  50% { transform: translate(1%, -2%) }
+  75% { transform: translate(2%, 2%) }
+  100% { transform: translate(0, 0) }
+}
+
 /* Accessibility: respect reduced-motion preferences */
 @media (prefers-reduced-motion: reduce) {
   .crt-scanlines,
@@ -305,7 +352,11 @@ body {
   .status-online,
   .wireframe-cube,
   .glitch-line,
-  .screen-noise {
+  .screen-noise,
+  .glitch-active,
+  .glitch-active .terminal-line,
+  .glitch-active .glitch-overlay,
+  .glitch-active .screen-noise {
     animation: none !important;
   }
 }

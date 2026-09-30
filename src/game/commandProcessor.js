@@ -1,4 +1,4 @@
-import { resolvePath, getEntry, isFile, isDirectory, virtualFS } from './fileSystem';
+import { resolvePath, getEntry } from './fileSystem';
 import { COMMAND_DEFINITIONS, INTENT_MAP } from './commandRegistry';
 import { getContextualHint, getSystemReaction } from './hintEngine';
 import { createGlitchedWriter } from './glitchedHistory';
@@ -20,14 +20,7 @@ import {
   TUTORIAL_REWARD_BITS,
   TUTORIAL_ACHIEVEMENT,
 } from './tutorial';
-import {
-  spawnProcess,
-  tickProcess,
-  isDangerous,
-  killProcess,
-  processEarnings,
-  PROCESS_TYPES,
-} from './processes';
+import { spawnProcess, tickProcess, isDangerous } from './processes';
 import { resolveCombine } from './crafting';
 import { resolveDaemonResponse } from './daemon';
 import { createCronJob, tickCron, dueJobs, formatCronJob } from './cron';
@@ -37,6 +30,38 @@ import { RADIO_STATIONS, pickTransmission } from './radio';
 import { getWeeklyChallenge, scoreWeekly } from './weekly';
 import { discoveryPercent, mergedBestiary, BESTIARY_CATEGORIES, initBestiary } from './bestiary';
 import { stormSurvived } from './storm';
+import { createFsView, applyWriteFile, canWrite } from './fsView';
+import { createShell, shellCommandNames } from './shell';
+import {
+  buildBoard,
+  boardSource,
+  computeScore,
+  defaultHandle,
+  formatBoard,
+  rewardForRank,
+  sanitizeName,
+  scoreBreakdown,
+} from './leaderboard';
+import {
+  LORE_ENTRIES,
+  findEntry,
+  formatEntry,
+  formatIndex,
+  isDiscovered,
+  isRead,
+  journalProgress,
+  readReward,
+} from './loreJournal';
+import {
+  GLITCH_EVENTS,
+  activeEvent,
+  achievementReady,
+  glitchStatusText,
+  glitchTax,
+  rollGlitchEvent,
+  tickGlitchEvent,
+} from './glitchEvents';
+import { fetchBoard, submitScore } from '../lib/leaderboardApi';
 import {
   DELAY_SHORT_MS,
   DELAY_MEDIUM_MS,
@@ -87,20 +112,76 @@ import {
   MACRO_MAX_RECORDING_COMMANDS,
   RADIO_TRANSMISSION_CHANCE,
   RADIO_BITS_PER_CATCH,
-STORM_CHANCE,
+  STORM_CHANCE,
   STORM_DURATION_MS,
   STORM_SURVIVAL_REWARD,
   ACHIEVEMENT_SPEEDRUNNER_TIME_MS,
   ACHIEVEMENT_STORM_CHASER_COUNT,
   ACHIEVEMENT_RADIO_HEAD_COUNT,
   WEEKLY_REWARD_BITS,
+  GLITCH_EVENT_CHANCE_PER_COMMAND,
+  GLITCH_EVENT_WINDOW_MS,
+  GAME_VERSION,
 } from './constants';
 
 const HELP_CATEGORIES = {
+  shell: `SHELL // REAL TERMINAL COMMANDS
+Navigation   pwd  cd [dir]  cd -  cd ~      ls [-l] [-a] [-h] [-t] [-r] [-R]  tree [-L n]
+Files        cat [-n]  head [-n N]  tail [-n N]  less  more  nl  tac  rev
+Text         grep [-i] [-v] [-n] [-c] [-l] [-w]  wc [-l]  sort [-n] [-r] [-u]  uniq [-c]
+             cut -d X -f N  tr [-d] SET  rev  tac  nl  head
+Editing      touch file  mkdir [-p] dir  rm [-r] file  rmdir  cp [-r] a b  mv a b
+             echo "text" > file   echo "more" >> file
+Pipelines    cat file | grep secret | wc -l        find / -name "*.enc"
+Info         man CMD  help CMD  type CMD  which CMD  history  env  export K=V
+System       uname [-a]  hostname  whoami  id  date [+FORMAT]  uptime  w  ps [aux]
+             top  kill [-9] PID  du [-h]  df [-h]  file FILE  stat [-c fmt] FILE
+Windows      dir = ls, cls = clear, type FILE = cat, copy = cp, move = mv,
+             del = rm, md = mkdir, rd = rmdir, findstr = grep, tasklist = ps,
+             where = which, ver = grid release
+
+Globs (* ?) and quoted arguments work everywhere paths are accepted.
+Pipelines join with |, sequences with ;, redirection with > and >>.`,
+
+  leaderboard: `LEADERBOARD
+  leaderboard              Show the grid board and your position
+  leaderboard [n]          Show top n (default 15)
+  leaderboard me           Your score and how it is calculated
+  leaderboard name <handle>  Set your operator handle (2-18 chars)
+  leaderboard submit       Upload your score to the global relay
+  leaderboard sync         Force a relay refresh
+
+SCORE = lifetime bits + 250/achievement + 400/lore entry + 150/bestiary find
+      + 1500/repaired sector + 300/glitch event survived
+
+Top 10 pays 250 Bits, first place pays 750. The board falls back to local rival
+agents when the relay is unreachable, so there is always someone to catch.`,
+
+  lore: `LORE JOURNAL
+  lore              Index of every entry, grouped by chapter
+  lore <id>         Read one entry (pays Bits the first time)
+  lore all          Dump everything recovered so far
+
+Entries unlock by playing: reading files, cracking ciphers, raising the cat,
+surviving storms and glitches, repairing the grid, and writing your own files.
+24 entries in 6 chapters: origins, signal, corruption, cat, deepnet, aftermath.`,
+
+  glitch: `GLITCH EVENTS
+  glitch             Show the active event, its window and your record
+  glitch list        Known signatures and which ones you have survived
+  glitch force       Trigger an event now (the grid pretends to resist)
+
+An event opens at random. Keep typing commands for the length of its window to
+survive it and collect the reward; go quiet and the corruption keeps what it
+took. Some events charge a memory tax, some drop a lore entry.
+
+Survive 3 events for the "Glitch Surfer" achievement.`,
+
   processes: `PROCESS MANAGEMENT
-  ps          List active processes (PID, name, age, risk level)
-  kill <pid>  Terminate a process for Bits (dangerous = bonus)
-  run <type>  Spawn a process manually [monitor|stress|shadow|idle]
+  ps [aux]         List active processes (PID, %CPU, %MEM, state, command)
+  top              Sorted snapshot with a load average footer
+  kill [-9] <pid>  Terminate a process for Bits (overheated = near-miss bonus)
+  run <type>       Spawn a process manually [monitor|stress|shadow|idle]
 
 Processes age each command. Overheated processes trigger glitches.
 Kill them before they overheat for near-miss bonus Bits.`,
@@ -132,9 +213,9 @@ Stages:
   ciphers: `CIPHERS / DECRYPTION
   decrypt <path>  Decode encrypted files (needs key or decoder)
 
-5 cipher files hidden in: /logs, /archives, /system, /home, /users/explorer
-Algorithms: ROT (letter shift), HEX (byte encoding), XOR (bitwise)
-Each rewards Bits + lore. Buy key (200B) or decoder (150B) first.`,
+13 encrypted files in /logs, /archives, /system, /home and /users/explorer.
+Algorithms: ROT, Vigenere, Base64, Atbash, Caesar+, Playfair, Baconian, XOR, Hex.
+Each one pays Bits and unlocks a journal entry. Buy key (200B) or decoder (150B).`,
 
   radio: `RADIO NETWORK
   radio on|off           Toggle radio
@@ -150,18 +231,18 @@ Stations:
 Leave radio on while exploring for passive Bits/lore.`,
 
   weekly: `WEEKLY CHALLENGE
-  weekly          View this week's challenge + leaderboard
+  weekly          View this week's challenge + local leaderboard
 
-Fixed seed per week. Challenge types: mine Bits, commands, dirs, processes, games, achievements, cat feeds, ciphers.
-Top the bot leaderboard (rank #1) for 150 Bits reward (once/week).
-Progress counts from everything you already do.`,
+Fixed seed per week. Challenge types: mine Bits, commands, dirs, processes, games,
+achievements, cat feeds, ciphers. Top the bot board (rank #1) for 150 Bits
+(once/week). For the real cross-player board, see "leaderboard".`,
 
   bestiary: `BESTIARY / GALLERY
   bestiary        Browse discovered entries + progress bar
 
 Categories: FILE_SPECIMENS, COMMAND_GLYPHS, GRID_FAUNA, SYSTEM_ORGANS, GRID_LORE
 Entries unlock from live progress (explore, solve, befriend, restore).
-100% = Completionist achievement. "bestiary" shows progress bar.`,
+100% = Completionist achievement.`,
 
   prestige: `PRESTIGE / RECOMPILE
   recompile       Reset world for permanent bonus (stage 2 + 2000 lifetime Bits)
@@ -172,7 +253,7 @@ Levels:
   3 TRANSCENDED   +free decoder on start
   4 GRID_TWIN     +2x Bits from processes
   5 PHANTOM_NODE  +storm immunity
-  ...
+  6 OMEGA_SECTOR  +2x global Bits, +10000 base
 
 Achievements per level. Progress persists across runs.`,
 
@@ -182,30 +263,23 @@ Achievements per level. Progress persists across runs.`,
   tutorial restart      Replay tutorial from step 1
 
 5 guided steps: help -> ls -> cat readme.txt -> cd /logs -> ask hello
-Reward: 50 Bits + "First Boot" achievement.
-"tutorial skip" to opt out anytime.`,
+Reward: 50 Bits + "First Boot" achievement.`,
 
   default: `TERMINAL QUEST - COMMAND REFERENCE
 
-Navigation:     ls, cd, pwd, search
-Files:          cat, decode, decrypt
-Bits/Shop:      bits, buy, combine, inventory
-Cat:            feed, pet, talk, follow, listen
-Processes:      ps, kill, run
-Crafting:       combine
-Story:          story, repair, restore, recompile
-Ciphers:        decrypt
-Radio:          radio (on/off/tune/stations)
-Weekly:         weekly
-Bestiary:       bestiary
-Automation:     cron, record, play
-Dailies:        daily
-Stats/Meta:     stats, rank, time, tips, tutorial
-Utility:        help, clear, save, load, edit, notes, rm, theme, time
+It is a real shell first: ls, cd, cat, grep, find, wc, head, tail, tree, stat,
+chmod-style flags, pipes (|), redirection (> >>), globs (* ?) and quoting all
+work the way they do in macOS, Linux and PowerShell. Type "man <command>" or
+"help shell" for the full reference.
 
-Type "help <category>" for detailed help on any category.
-Categories: processes, crafting, story, ciphers, radio, weekly, bestiary, prestige, tutorial
-Type "help --all" for complete command list.`,
+Grid commands:  help, story, repair, restore, recompile, lore, leaderboard,
+               glitch, bestiary, weekly, daily, radio, storm, ask, buy, bits,
+               inventory, combine, decode, decrypt, scan, install, play, guess,
+               catch, stop, cron, record, theme, tutorial, stats, rank, tips,
+               save, load, clear, reset
+
+Help topics: shell, leaderboard, lore, glitch, processes, crafting, story,
+ciphers, radio, weekly, bestiary, prestige, tutorial`,
 };
 
 const SYSTEM_COMMENTARY = [
@@ -230,10 +304,8 @@ const EASYTER_EGGS = {
   idkfa: 'all weapons unlocked. wait, this is a terminal.',
   quit: 'there is no escape.',
   exit: 'the system is your home now.',
-  date: () => new Date().toLocaleString(),
-  version: 'TERMINAL QUEST OS v0.1.7 - RE-DISTRIBUTION PROHIBITED',
-  credits: 'CREATED BY: [INTERNAL_ERROR]\nVERSION: 0.1.7\nSTATUS: EXPERIMENTAL',
-  uptime: () => 'SYSTEM UPTIME: ' + Math.floor(performance.now() / 1000) + 's',
+  version: `TERMINAL QUEST OS v${GAME_VERSION} - RE-DISTRIBUTION PROHIBITED`,
+  credits: `CREATED BY: [INTERNAL_ERROR]\nVERSION: ${GAME_VERSION}\nSTATUS: EXPERIMENTAL`,
   fortune: 'YOU WILL FIND WHAT YOU SEEK, UNLESS IT IS DELETED.',
   matrix: 'Wake up, Neo...',
   'sudo rm -rf /': 'Nice try. I like my soul where it is.',
@@ -273,19 +345,82 @@ export const createCommandProcessor = (ctx) => {
     playAchievement,
   } = ctx;
 
-  const addGlitchedHistory = createGlitchedWriter(
-    addGlitchedHistoryRaw,
-    playError,
-    playAchievement
-  );
+  const chaosEnabled = () => state().settings?.chaos !== false;
+
+  const addGlitchedHistory = createGlitchedWriter(addGlitchedHistoryRaw, playError, playAchievement, {
+    chaos: chaosEnabled,
+  });
 
   // Late-binding accessors so async callbacks always read fresh state
   const state = () => getState();
 
   // Session-scoped minigame state (never persisted)
   const activeGameRef = { current: null };
+  const bootTime = Date.now();
   let leakTimer = null;
   let lastDaemonAskAt = 0;
+  let commandDepth = 0;
+
+  // ── Shell layer ────────────────────────────────────────────────────────────
+  // The shell owns everything POSIX. It reads state through `getState`, so it
+  // always sees the newest save even in the middle of a pipeline.
+  // The tutorial is mirrored in the session so it advances on the same command
+  // that triggers it, even though React state lands a tick later.
+  let tutorialSession = null;
+  const tutorialState = () => {
+    if (!tutorialSession) {
+      tutorialSession = { ...(state().tutorial || { started: false, step: 0, done: false }) };
+    }
+    return tutorialSession;
+  };
+  const setTutorial = (patch) => {
+    tutorialSession = { ...tutorialState(), ...patch };
+    ctx.updateTutorial(tutorialSession);
+  };
+
+  const shell = createShell({
+    getState,
+    addBits: ctx.addBits,
+    incrementKills: ctx.incrementKills,
+    stdout: (text) => {
+      for (const line of String(text).split('\n')) addGlitchedHistory({ type: 'output', text: line });
+    },
+    stderr: (text) => addGlitchedHistory({ type: 'error', text }),
+    setDir: ctx.setDir,
+    setFs: ctx.setFs,
+    setProcesses: ctx.setProcesses,
+    writeFile: (path, content, append = false) => {
+      const snapshot = shell.viewState();
+      if (!canWrite(snapshot, path)) {
+        addGlitchedHistory({ type: 'error', text: `bash: ${path}: Read-only file system` });
+        return;
+      }
+      const view = createFsView(snapshot);
+      const existing = append ? (view.read(path) ?? '') : '';
+      shell.setFs(applyWriteFile(view.fs, path, `${existing}${content}`, Date.now()));
+      ctx.addUnlockedFile(path);
+    },
+    noteRead: (path, entry) => {
+      if (entry?.type === 'file' && !entry.isEncrypted) ctx.addUnlockedFile(path);
+    },
+    canReadRestricted: () => storyUnlocks.coreReadable(state()),
+    announce: (type, text) => addHistory({ type, text: `[ACHIEVEMENT UNLOCKED] ${text}` }),
+    onFlag: (flag) => {
+      if (flag !== 'ls-a' || state().solvedPuzzles.includes('ls-a')) return;
+      ctx.solvePuzzle('ls-a', REWARD_LS_A, 'Hidden Seeker');
+      addHistory({
+        type: 'achievement',
+        text: `[ACHIEVEMENT UNLOCKED] Hidden Seeker +${REWARD_LS_A} Bits`,
+      });
+    },
+    userName: () => state().profile?.name || defaultHandle(),
+    commandHistory: () => state().shell?.history || [],
+    clearHistory: () => ctx.clearShellHistory(),
+    requestExit: () =>
+      addHistory({ type: 'system', text: 'EXIT REQUEST DENIED. the grid has no door.' }),
+    bootTime,
+  });
+
 
   const emitPurchaseBar = (onComplete) => {
     addHistory({ type: 'system', text: 'INITIATING TRANSACTION...' });
@@ -364,6 +499,164 @@ export const createCommandProcessor = (ctx) => {
         type: 'system',
         text: 'SYSTEM_EVENT: REPAIR PROTOCOL ONLINE. TYPE "story" FOR DETAILS.',
       });
+    }
+  };
+
+  // ── Leaderboard plumbing ───────────────────────────────────────────────────
+
+  const renderBoard = (limit = 15) => {
+    const s = state();
+    const board = buildBoard(s, s.leaderboard?.remote || []);
+    addGlitchedHistory({
+      type: 'output',
+      text: formatBoard(board, { limit, source: boardSource(s.leaderboard) }),
+    });
+
+    const previous = s.leaderboard?.seenRank;
+    if (previous && board.rank && board.rank < previous) {
+      addHistory({ type: 'output', text: `▲ CLIMBED ${previous - board.rank} PLACES. the grid noticed.` });
+    }
+    if (board.rank) ctx.updateLeaderboard({ seenRank: board.rank, best: Math.max(board.rank, s.leaderboard?.best || 0) });
+  };
+
+  let leaderboardSyncInFlight = false;
+  const syncLeaderboard = (announce = false) => {
+    if (leaderboardSyncInFlight) return;
+    leaderboardSyncInFlight = true;
+    fetchBoard()
+      .then((entries) => {
+        if (!entries) {
+          if (announce) {
+            addHistory({
+              type: 'system',
+              text: 'RELAY UNREACHABLE. showing the local agent board instead.',
+            });
+          }
+          return;
+        }
+        ctx.updateLeaderboard({ remote: entries, status: 'remote', lastSync: Date.now() });
+        if (announce) {
+          addHistory({ type: 'output', text: `RELAY SYNCED: ${entries.length} operators online.` });
+          renderBoard(15);
+        }
+      })
+      .finally(() => {
+        leaderboardSyncInFlight = false;
+      });
+  };
+
+  const submitToLeaderboard = () => {
+    const s = state();
+    const name = s.profile?.name || defaultHandle();
+    const score = computeScore(s);
+    if (!s.profile?.name) ctx.updateProfile({ name });
+
+    addHistory({ type: 'system', text: `UPLOADING SCORE TO RELAY... [${name}] ${score}` });
+    submitScore({ name, score, meta: { rank: s.story?.stage || 0, prestige: s.prestige || 0 } })
+      .then((result) => {
+        if (!result) {
+          addGlitchedHistory({
+            type: 'error',
+            text: 'RELAY UNREACHABLE. score kept locally — the grid counts that too.',
+          });
+          return;
+        }
+        ctx.updateLeaderboard({ remote: result.entries || [], status: 'remote', lastSync: Date.now() });
+        const board = buildBoard(state(), result.entries || []);
+        addGlitchedHistory({ type: 'output', text: `RELAY ACCEPTED. you are #${board.rank} of ${board.total}.` });
+        ctx.updateLeaderboard({ best: Math.max(board.rank, s.leaderboard?.best || 0) });
+
+        const reward = rewardForRank(board.rank);
+        if (reward > 0 && s.leaderboard?.lastRewardRank !== board.rank) {
+          ctx.updateLeaderboard({ lastRewardRank: board.rank });
+          ctx.addBits(reward, 'Grid Legend');
+          addHistory({
+            type: 'achievement',
+            text: `[ACHIEVEMENT UNLOCKED] Grid Legend +${reward} Bits (rank #${board.rank})`,
+          });
+        }
+        if (achievementReady(state())) {
+          addHistory({ type: 'achievement', text: '[ACHIEVEMENT UNLOCKED] Glitch Surfer' });
+        }
+      })
+      .catch(() => {
+        addGlitchedHistory({ type: 'error', text: 'RELAY HANDSHAKE FAILED. try again later.' });
+      });
+  };
+
+  // ── Glitch event plumbing ──────────────────────────────────────────────────
+
+  const openGlitchEvent = (event) => {
+    ctx.updateGlitch({
+      active: event,
+      lastAt: event.startedAt,
+      count: (state().glitch?.count || 0) + 1,
+    });
+    setIsGlitching(true);
+    setTimeout(() => setIsGlitching(false), GLITCH_DURATION_MS * 3);
+    addGlitchedHistory({ type: 'error', text: `GLITCH EVENT: ${event.name}` });
+    for (const line of event.lines) addGlitchedHistory({ type: 'error', text: line });
+
+    if (event.effect === 'tax') {
+      const tax = glitchTax(event, state().bits);
+      if (tax > 0) {
+        ctx.addBits(-tax);
+        addHistory({ type: 'output', text: `MEMORY TAX WITHHELD: -${tax} BITS` });
+      }
+    }
+    addHistory({
+      type: 'system',
+      text: `Keep typing to survive it (${GLITCH_EVENT_WINDOW_MS / 1000}s window). "glitch" shows the clock.`,
+    });
+  };
+
+  const forceGlitchEvent = (brief = false) => {
+    const now = Date.now();
+    const event = rollGlitchEvent({ ...state(), glitch: { ...state().glitch, lastAt: 0 } }, now);
+    if (!event) {
+      addGlitchedHistory({ type: 'output', text: 'The grid refuses to glitch on command. Try later.' });
+      return;
+    }
+    // `--brief` shortens the window so the mechanic can be demonstrated or
+    // tested without waiting out the full 45 seconds.
+    openGlitchEvent(brief ? { ...event, expiresAt: now + 6_000 } : event);
+  };
+
+  /** Called after every command: expires events and rewards survivors. */
+  const advanceGlitchEvent = () => {
+    const result = tickGlitchEvent(state());
+    if (result.status === 'open' || result.status === 'idle') return;
+
+    if (result.status === 'survived') {
+      const survived = [...new Set([...(state().glitch?.survived || []), result.event.id])];
+      ctx.updateGlitch({ active: null, survived });
+      ctx.addBits(result.reward, 'Glitch Surfer');
+      addGlitchedHistory({ type: 'output', text: `GLITCH SURVIVED: +${result.reward} BITS` });
+      if (survived.length >= 3 && !state().achievements.includes('Glitch Surfer')) {
+        addHistory({ type: 'achievement', text: '[ACHIEVEMENT UNLOCKED] Glitch Surfer' });
+      }
+      return;
+    }
+
+    ctx.updateGlitch({ active: null });
+    addGlitchedHistory({
+      type: 'error',
+      text: `GLITCH EVENT LOST: ${result.event.name}. the grid kept what it took.`,
+    });
+  };
+
+  /** Counts a command towards an open event and may open a new one. */
+  const pulseGlitchEvent = () => {
+    const current = activeEvent(state());
+    if (current) {
+      ctx.updateGlitch({
+        active: { ...current, commands: (current.commands || 0) + 1 },
+      });
+      return;
+    }
+    if (chaosEnabled() && Math.random() < GLITCH_EVENT_CHANCE_PER_COMMAND) {
+      const event = rollGlitchEvent(state());
+      if (event) openGlitchEvent(event);
     }
   };
 
@@ -457,6 +750,168 @@ export const createCommandProcessor = (ctx) => {
       }
     },
 
+    // ── FEATURE 1: leaderboard ───────────────────────────────────────────────
+
+    leaderboard: (args) => {
+      const sub = (args[0] || '').toLowerCase();
+
+      if (sub === 'name' || sub === 'handle' || sub === 'nick') {
+        const handle = sanitizeName(args.slice(1).join(' '));
+        if (!handle) {
+          addGlitchedHistory({
+            type: 'error',
+            text: 'USAGE: leaderboard name <handle>   (2-18 chars, letters, digits, . _ -)',
+          });
+          return;
+        }
+        ctx.updateProfile({ name: handle });
+        addGlitchedHistory({ type: 'output', text: `OPERATOR HANDLE SET: ${handle}` });
+        addGlitchedHistory({
+          type: 'system',
+          text: 'Run "leaderboard submit" to publish your score to the global relay.',
+        });
+        return;
+      }
+
+      if (sub === 'me' || sub === 'score') {
+        const score = computeScore(state());
+        addGlitchedHistory({ type: 'output', text: `LEADERBOARD SCORE: ${score}` });
+        for (const part of scoreBreakdown(state())) {
+          addGlitchedHistory({
+            type: 'output',
+            text: `  ${String(part.count).padStart(4)} x ${String(part.weight).padStart(5)}  ${part.label}`,
+          });
+        }
+        return;
+      }
+
+      if (sub === 'sync') {
+        addGlitchedHistory({ type: 'system', text: 'RELAY HANDSHAKE...' });
+        syncLeaderboard(true);
+        return;
+      }
+
+      if (sub === 'submit') {
+        submitToLeaderboard();
+        return;
+      }
+
+      if (args[0] && Number.isFinite(Number.parseInt(args[0], 10))) {
+        renderBoard(Number.parseInt(args[0], 10));
+        return;
+      }
+
+      renderBoard(15);
+    },
+
+    // ── FEATURE 2: lore journal ──────────────────────────────────────────────
+
+    lore: (args) => {
+      const target = (args[0] || '').toLowerCase();
+
+      if (target === 'all') {
+        const discovered = LORE_ENTRIES.filter((entry) => isDiscovered(state(), entry.id));
+        if (discovered.length === 0) {
+          addGlitchedHistory({ type: 'output', text: 'The journal is empty. Go read something.' });
+          return;
+        }
+        addGlitchedHistory({ type: 'system', text: `DUMPING ${discovered.length} ENTRIES...` });
+        for (const entry of discovered) {
+          addGlitchedHistory({ type: 'output', text: formatEntry(entry) });
+        }
+        return;
+      }
+
+      if (!target) {
+        const progress = journalProgress(state());
+        addGlitchedHistory({ type: 'output', text: formatIndex(state()) });
+        if (progress.discovered === 0) {
+          addHistory({ type: 'system', text: 'HINT: read files, crack ciphers, befriend the cat.' });
+        }
+        return;
+      }
+
+      const entry = findEntry(target);
+      if (!entry) {
+        addGlitchedHistory({
+          type: 'error',
+          text: `No journal entry "${target}". Type "lore" for the index.`,
+        });
+        return;
+      }
+      if (!isDiscovered(state(), entry.id)) {
+        addGlitchedHistory({
+          type: 'error',
+          text: 'ENTRY NOT RECOVERED YET. Keep exploring — it writes itself as you find it.',
+        });
+        return;
+      }
+
+      addGlitchedHistory({ type: 'output', text: formatEntry(entry) });
+      if (!isRead(state(), entry.id)) {
+        const reward = readReward(state(), entry.id);
+        ctx.updateJournal({ read: { ...(state().journal?.read || {}), [entry.id]: Date.now() } });
+        ctx.addBits(reward);
+        addGlitchedHistory({ type: 'output', text: `+${reward} BITS for recovered lore.` });
+      }
+    },
+
+    // ── FEATURE 3: glitch events ─────────────────────────────────────────────
+
+    glitch: (args) => {
+      const sub = (args[0] || '').toLowerCase();
+
+      if (sub === 'force' || sub === '--force') {
+        forceGlitchEvent(args.includes('--brief'));
+        return;
+      }
+      if (sub === 'list' || sub === 'types') {
+        addGlitchedHistory({ type: 'system', text: 'KNOWN GLITCH SIGNATURES:' });
+        for (const event of GLITCH_EVENTS) {
+          const survived = (state().glitch?.survived || []).includes(event.id);
+          addGlitchedHistory({
+            type: 'output',
+            text: `  ${survived ? event.name.padEnd(20) : '?'.repeat(20)}  effect: ${
+              survived ? event.effect : 'unknown'
+            }`,
+          });
+        }
+        return;
+      }
+      addGlitchedHistory({ type: 'output', text: glitchStatusText(state()) });
+    },
+
+    calm: (args) => {
+      const sub = (args[0] || '').toLowerCase();
+      const on = chaosEnabled();
+      let next = !on;
+      if (sub === 'on' || sub === 'true' || sub === 'chaos') next = true;
+      else if (sub === 'off' || sub === 'false' || sub === 'still') next = false;
+      else if (sub && sub !== 'toggle' && sub !== 'status') {
+        addGlitchedHistory({ type: 'error', text: 'USAGE: calm [on|off|toggle]' });
+        return;
+      }
+      ctx.updateSettings({ chaos: next });
+      if (next) {
+        addGlitchedHistory({ type: 'output', text: 'CHAOS ON. the grid goes back to misbehaving.' });
+      } else {
+        addGlitchedHistory({
+          type: 'output',
+          text: 'CALM GRID. no more self-corruption, storms or surprise events.',
+        });
+        addHistory({
+          type: 'system',
+          text: '"glitch force" still works — the corridor is quiet, not empty.',
+        });
+      }
+    },
+
+    reset: () => {
+      addHistory({ type: 'error', text: 'WARNING: THIS WILL DELETE ALL PROGRESS AND ACHIEVEMENTS.' });
+      addHistory({ type: 'system', text: 'ARE YOU SURE YOU WANT TO DELETE ALL DATA? [Y/N]' });
+      setPendingConfirmation({ cmd: 'reset' });
+    },
+
     help: (args) => {
       const category = args[0];
       const isAdvanced = category === '--all';
@@ -475,7 +930,7 @@ export const createCommandProcessor = (ctx) => {
         return;
       }
 
-      // General help (existing behavior)
+      // General help: grid commands plus the whole shell command set.
       const visibleNames = Object.entries(COMMAND_DEFINITIONS)
         .filter(
           ([_name, def]) =>
@@ -483,171 +938,25 @@ export const createCommandProcessor = (ctx) => {
         )
         .map(([name]) => name);
 
+      const shellNames = shellCommandNames();
+
+      if (isAdvanced) {
+        const all = [...visibleNames, ...shellNames].sort();
+        addGlitchedHistory({ type: 'output', text: `ALL COMMANDS: ${all.join(', ')}` });
+        return;
+      }
+
       addGlitchedHistory({
         type: 'output',
-        text: `Available Commands: ${visibleNames.join(', ')}`,
+        text: `Grid commands: ${visibleNames.join(', ')}`,
       });
-      if (!isAdvanced)
-        addHistory({
-          type: 'system',
-          text: 'HINT: Type "help --all" to see system-level commands, or "help <category>" for category-specific help (processes, crafting, story, ciphers, radio, weekly, bestiary, prestige, tutorial).',
-        });
-    },
-
-    ls: (args) => {
-      const targetArg = args.filter((a) => !a.startsWith('-'))[0];
-      const showAll = args.includes('-a');
-      const targetPath = resolvePath(state().currentDir, targetArg || '.');
-      const entry = getEntry(targetPath);
-
-      if (!entry) {
-        addGlitchedHistory({
-          type: 'error',
-          text: `ls: cannot access '${targetArg || '.'}': No such file or directory`,
-        });
-        return;
-      }
-
-      if (isFile(targetPath)) {
-        addGlitchedHistory({ type: 'output', text: targetArg || '.' });
-        return;
-      }
-
-      const stage = state().story?.stage || 0;
-      const files = entry.children
-        .filter((name) => {
-          const childPath = resolvePath(targetPath, name);
-          const childEntry = getEntry(childPath);
-
-          if (childEntry?.storyGate && stage < childEntry.storyGate) return false;
-
-          if (childEntry?.isFragment) {
-            const fragNum = parseInt(name.split('_')[1]);
-            return state().cat.fragmentsFound >= fragNum;
-          }
-
-          return showAll || !childEntry?.isHidden;
-        })
-        .join('  ');
-
-      addGlitchedHistory({ type: 'output', text: files || '(empty)' });
-
-      if (showAll && !state().solvedPuzzles.includes('ls-a')) {
-        ctx.solvePuzzle('ls-a', REWARD_LS_A, 'Hidden Seeker');
-        addHistory({ type: 'achievement', text: '[ACHIEVEMENT UNLOCKED] Hidden Seeker +20 Bits' });
-      }
-    },
-
-    pwd: () => {
-      addGlitchedHistory({ type: 'output', text: state().currentDir });
-    },
-
-    cd: (args) => {
-      const targetDirInput = args[0];
-      if (!targetDirInput || targetDirInput === '~') {
-        ctx.setDir('/home');
-        return;
-      }
-
-      const targetPath = resolvePath(state().currentDir, targetDirInput);
-      const entry = getEntry(targetPath);
-
-      if (!entry) {
-        addGlitchedHistory({ type: 'error', text: `cd: ${targetDirInput}: No such directory` });
-        const currentEntry = getEntry(state().currentDir);
-        const suggestion = currentEntry.children?.find((child) => child.startsWith(targetDirInput));
-        if (suggestion) {
-          addHistory({ type: 'system', text: `Did you mean: ${suggestion}?` });
-        }
-        return;
-      }
-
-      if (isFile(targetPath)) {
-        addGlitchedHistory({ type: 'error', text: `cd: ${targetDirInput}: Not a directory` });
-        addHistory({ type: 'system', text: `Try: cat ${targetDirInput}` });
-        return;
-      }
-
-      if (entry.restricted && !args[1]?.includes('--force')) {
-        addGlitchedHistory({
-          type: 'error',
-          text: 'ACCESS DENIED: Insufficient permissions for restricted sector.',
-        });
-        return;
-      }
-
-      ctx.setDir(targetPath);
-    },
-
-    cat: (args) => {
-      const fileName = args[0];
-      if (!fileName) {
-        addGlitchedHistory({ type: 'error', text: 'usage: cat [file]' });
-        return;
-      }
-
-      const memoText = state().memos?.[fileName];
-      if (memoText !== undefined) {
-        addGlitchedHistory({ type: 'output', text: memoText });
-        return;
-      }
-
-      const filePath = resolvePath(state().currentDir, fileName);
-      const entry = getEntry(filePath);
-
-      if (!entry) {
-        addGlitchedHistory({ type: 'error', text: `cat: ${fileName}: No such file` });
-        return;
-      }
-
-      if (isDirectory(filePath)) {
-        addGlitchedHistory({ type: 'error', text: `cat: ${fileName}: Is a directory` });
-        addHistory({ type: 'system', text: `Try: cd ${fileName} or ls ${fileName}` });
-        return;
-      }
-
-      if (entry.restricted && !storyUnlocks.coreReadable(state())) {
-        addGlitchedHistory({ type: 'error', text: 'ACCESS DENIED: Permission required.' });
-        return;
-      }
-
-      ctx.addUnlockedFile(filePath);
-      if (entry.isEncrypted) {
-        addGlitchedHistory({ type: 'output', text: 'ENCRYPTED DATA: ' + entry.content });
-        addHistory({ type: 'system', text: 'HINT: Master key required for decryption.' });
-      } else {
-        addGlitchedHistory({ type: 'output', text: entry.content || '(empty file)' });
-        if (entry.content.includes('SEGMENTATION FAULT')) {
-          setIsGlitching(true);
-          setTimeout(() => setIsGlitching(false), DELAY_MEDIUM_MS);
-        }
-      }
-    },
-
-    search: (args) => {
-      const query = args[0];
-      if (!query) {
-        addGlitchedHistory({ type: 'error', text: 'USAGE: search [pattern]' });
-      } else {
-        addHistory({ type: 'system', text: `SCANNING FILESYSTEM FOR "${query.toUpperCase()}"...` });
-        setTimeout(() => {
-          const results = Object.keys(virtualFS).filter((path) =>
-            path.toLowerCase().includes(query)
-          );
-          if (results.length > 0) {
-            addHistory({ type: 'output', text: `FOUND ${results.length} MATCHES:` });
-            results.forEach((r) => addHistory({ type: 'output', text: ` - ${r}` }));
-          } else {
-            addHistory({ type: 'output', text: 'NO MATCHES FOUND.' });
-          }
-        }, 800);
-      }
-    },
-
-    whoami: () => {
       addGlitchedHistory({
         type: 'output',
-        text: 'explorer // session_id: 0x' + Math.random().toString(16).slice(2, 10).toUpperCase(),
+        text: `Shell commands: ${shellNames.join(', ')}`,
+      });
+      addHistory({
+        type: 'system',
+        text: 'HINT: "man <command>" documents anything, "help <category>" goes deeper (shell, leaderboard, lore, glitch, processes, crafting, story, ciphers, radio, weekly, bestiary, prestige, tutorial).',
       });
     },
 
@@ -965,17 +1274,18 @@ export const createCommandProcessor = (ctx) => {
       } else if (subAction === 'help') {
         addGlitchedHistory({
           type: 'output',
-          text: 'Available sudo commands: cd [dir], cat [file], clear',
+          text: 'sudo runs any command with elevated privileges: sudo <command> [args].',
         });
-      } else if (subAction === 'clear') {
-        addHistory({
-          type: 'error',
-          text: 'WARNING: THIS WILL DELETE ALL PROGRESS AND ACHIEVEMENTS.',
-        });
-        addHistory({ type: 'system', text: 'ARE YOU SURE YOU WANT TO DELETE ALL DATA? [Y/N]' });
-        setPendingConfirmation({ cmd: 'reset' });
+      } else if (subAction === 'reset' || subAction === 'reset-game') {
+        handlers.reset();
+      } else if (subAction === 'clear' || subAction === 'cls') {
+        handlers.clear();
       } else if (subAction === 'make' && target === 'sandwich') {
         addGlitchedHistory({ type: 'output', text: 'Okay.' });
+      } else if (shell.has(subAction)) {
+        // Everything else runs through the shell, exactly as it would as root.
+        addHistory({ type: 'system', text: `ELEVATING PRIVILEGES... [${subAction}]` });
+        shell.run([subAction, ...args.slice(1)].join(' '));
       } else {
         addGlitchedHistory({
           type: 'error',
@@ -1193,10 +1503,6 @@ export const createCommandProcessor = (ctx) => {
       });
     },
 
-    sleep: () => {
-      addGlitchedHistory({ type: 'output', text: 'the system never sleeps. why should you?' });
-    },
-
     recover: () => {
       setIsGlitching(true);
       addHistory({ type: 'system', text: 'INITIATING SYSTEM RECOVERY...' });
@@ -1359,26 +1665,16 @@ export const createCommandProcessor = (ctx) => {
       addGlitchedHistory({ type: 'output', text: randomTip() });
     },
 
-    time: () => {
-      const now = new Date();
-      const phase = getTimeOfDay();
-      addGlitchedHistory({ type: 'output', text: `SYSTEM TIME: ${now.toLocaleString()}` });
-      addGlitchedHistory({
-        type: 'output',
-        text: `PHASE OF DAY: ${phase.toUpperCase()} // ${TIME_PHRASES[phase].status}`,
-      });
-    },
-
     tutorial: (args) => {
       const sub = (args[0] || '').toLowerCase();
-      const tut = state().tutorial || { started: false, step: 0, done: false };
+      const tut = tutorialState();
       if (sub === 'skip') {
-        ctx.updateTutorial({ started: true, done: true });
+        setTutorial({ started: true, done: true });
         addHistory({ type: 'system', text: 'TUTORIAL SKIPPED. The grid is yours. Good luck.' });
         return;
       }
       if (sub === 'restart') {
-        ctx.updateTutorial({ started: true, step: 0, done: false });
+        setTutorial({ started: true, step: 0, done: false });
         addHistory({ type: 'system', text: 'TUTORIAL RESTARTED.' });
         addHistory({ type: 'system', text: getStepPrompt(0) });
         return;
@@ -1397,46 +1693,42 @@ export const createCommandProcessor = (ctx) => {
       addHistory({ type: 'system', text: getStepPrompt(tut.step) });
     },
 
+    // Sugar for `echo "text" > file` — writes a real file in the cwd.
     edit: (args) => {
       if (!args[0]) {
-        addGlitchedHistory({ type: 'error', text: 'usage: edit [name] [content...]' });
-        return;
-      }
-      const name = args[0];
-      const content = args.slice(1).join(' ') || '(blank note)';
-      ctx.setMemo(name, content);
-      addGlitchedHistory({ type: 'output', text: `MEMO SAVED: ${name} (${content.length}B)` });
-    },
-
-    notes: () => {
-      const s = state();
-      const names = Object.keys(s.memos || {});
-      if (!names.length) {
         addGlitchedHistory({
-          type: 'output',
-          text: 'No memos written. try: edit ideas drink coffee',
+          type: 'error',
+          text: 'usage: edit [name] [content...]   (or: echo "text" > name.txt)',
         });
         return;
       }
-      names.forEach((n) =>
-        addGlitchedHistory({ type: 'output', text: `[memo] ${n}: ${s.memos[n]}` })
-      );
+      const snapshot = shell.viewState();
+      const path = createFsView(snapshot).resolve(args[0]);
+      if (!canWrite(snapshot, path)) {
+        addGlitchedHistory({ type: 'error', text: `edit: ${args[0]}: Read-only file system` });
+        return;
+      }
+      const view = createFsView(snapshot);
+      const content = args.slice(1).join(' ') || '(blank note)';
+      shell.setFs(applyWriteFile(view.fs, path, content, Date.now()));
+      ctx.addUnlockedFile(path);
+      addGlitchedHistory({ type: 'output', text: `WROTE ${path} (${content.length} bytes)` });
     },
 
-    rm: (args) => {
-      if (args[0] === 'memo' && args[1]) {
-        if (state().memos?.[args[1]] !== undefined) {
-          ctx.removeMemo(args[1]);
-          addGlitchedHistory({ type: 'output', text: `MEMO DELETED: ${args[1]}` });
-        } else {
-          addGlitchedHistory({ type: 'error', text: `rm memo: ${args[1]}: no such memo` });
-        }
-      } else if (args[0] === 'memo') {
-        addGlitchedHistory({ type: 'error', text: 'usage: rm memo [name]' });
-      } else {
+    notes: () => {
+      const files = createFsView(state()).userFiles();
+      if (!files.length) {
         addGlitchedHistory({
-          type: 'error',
-          text: 'rm: target not recognized. the filesystem is read-only except your memos.',
+          type: 'output',
+          text: 'You have written nothing yet. try: echo "a note" > note.txt',
+        });
+        return;
+      }
+      addGlitchedHistory({ type: 'system', text: `YOUR FILES (${files.length}):` });
+      for (const file of files) {
+        addGlitchedHistory({
+          type: 'output',
+          text: `  ${file.path}  (${file.size} bytes)  ${file.content.split('\n')[0].slice(0, 48)}`,
         });
       }
     },
@@ -1631,90 +1923,6 @@ export const createCommandProcessor = (ctx) => {
           addHistory({ type: 'achievement', text: `[ACHIEVEMENT UNLOCKED] ${ending.achievement}` });
         }
       }, DELAY_RECOVERY_MS);
-    },
-
-    // --- Process management ---
-    ps: () => {
-      const procs = state().processes || [];
-      const active = procs.filter((p) => !p.terminated);
-      if (!active.length) {
-        addHistory({ type: 'output', text: 'NO ACTIVE PROCESSES.' });
-        return;
-      }
-      addHistory({ type: 'system', text: 'PID   NAME                    AGE    RISK' });
-      for (const p of active) {
-        const risk = isDangerous(p)
-          ? '!!DANGER!!'
-          : p.age > p.dangerThreshold / 2
-            ? 'RISING'
-            : 'stable';
-        addHistory({
-          type: 'output',
-          text: `${String(p.pid).padEnd(6)}${p.name.padEnd(24)}${String(p.age).padEnd(7)}${risk}`,
-        });
-      }
-      addHistory({
-        type: 'output',
-        text: `\n  ${active.length} process(es) active. "kill <pid>" to terminate.`,
-      });
-    },
-    kill: (args) => {
-      if (!args.length) {
-        addHistory({ type: 'error', text: 'USAGE: kill <pid>' });
-        return;
-      }
-      const pid = parseInt(args[0], 10);
-      if (Number.isNaN(pid)) {
-        addHistory({ type: 'error', text: 'PID must be numeric.' });
-        return;
-      }
-      const procs = state().processes || [];
-      const idx = procs.findIndex((p) => p.pid === pid && !p.terminated);
-      if (idx === -1) {
-        addHistory({ type: 'error', text: `No active process with PID ${pid}.` });
-        return;
-      }
-      const target = procs[idx];
-      const updated = [...procs.slice(0, idx), killProcess(target), ...procs.slice(idx + 1)];
-      ctx.setProcesses(updated);
-      const bits = processEarnings(target);
-      const bonusNote = isDangerous(target) ? ' [NEAR-MISS BONUS]' : '';
-      addHistory({
-        type: 'output',
-        text: `PROCESS ${pid} (${target.name}) TERMINATED. +${bits} BITS${bonusNote}`,
-      });
-      ctx.addBits(bits, bits >= 50 ? 'Process Reaper' : null);
-      if (isDangerous(target) && !state().achievements.includes('Process Reaper')) {
-        addHistory({ type: 'achievement', text: '[ACHIEVEMENT UNLOCKED] Process Reaper' });
-      }
-      ctx.incrementKills();
-    },
-    run: (args) => {
-      const typeId = args[0] || 'monitor';
-      const type = PROCESS_TYPES.find((t) => t.id === typeId);
-      if (!type) {
-        addHistory({
-          type: 'error',
-          text: `Unknown process type: ${typeId}. Valid: ${PROCESS_TYPES.map((t) => t.id).join(', ')}`,
-        });
-        return;
-      }
-      const procs = (state().processes || []).filter((p) => !p.terminated);
-      if (procs.length >= PROCESS_MAX_COUNT) {
-        addHistory({ type: 'error', text: `Max ${PROCESS_MAX_COUNT} processes. Kill one first.` });
-        return;
-      }
-      const newProc = spawnProcess({
-        typeId: type.id,
-        name: type.name,
-        bitsYield: type.bitsYield,
-        dangerThreshold: type.dangerThreshold,
-      });
-      ctx.setProcesses([...procs, newProc]);
-      addHistory({
-        type: 'output',
-        text: `SPAWNED ${type.name} (PID ${newProc.pid}). Age threshold for danger: ${type.dangerThreshold}.`,
-      });
     },
 
     // --- Crafting ---
@@ -2204,36 +2412,36 @@ if (typeof window !== 'undefined') {
 }
 
 const processCommand = (cmdStr) => {
-    let currentInput = cmdStr.trim().toLowerCase();
-    if (!currentInput) return;
+    const rawInput = cmdStr.trim();
+    if (!rawInput) return;
 
-    // Engagement bookkeeping — always fresh state, date rollover handled here
-    ctx.ensureNewDay();
-    ctx.recordCommand();
-    ctx.recordVisit(state().currentDir);
-    maybeAdvanceDiscovery();
-
-    // 1. Intent Mapping (Natural Language)
+    // 1. Intent Mapping (Natural Language) — matched case-insensitively, and
+    // the whole chain is re-typed when it rewrites into a command.
+    let currentInput = rawInput;
     let iterations = 0;
-    while (INTENT_MAP[currentInput] && iterations < 5) {
-      const nextInput = INTENT_MAP[currentInput];
+    while (INTENT_MAP[currentInput.toLowerCase()] && iterations < 5) {
+      const nextInput = INTENT_MAP[currentInput.toLowerCase()];
       if (nextInput === currentInput) break;
       currentInput = nextInput;
       iterations++;
     }
 
-    // 2. Tokenize
+    // 2. Tokenize — the case of arguments is preserved, only the verb is
+    // matched case-insensitively (like every real shell).
     const tokens = currentInput.split(/\s+/);
     const command = tokens[0];
     const args = tokens.slice(1);
+    const normalizedCommand = command.toLowerCase();
 
-    // 3. Alias Resolution & Registry Lookup
-    let canonicalCommand = command;
+    // 3. Alias Resolution: the shell resolves its own aliases internally, so
+    // only grid commands need the registry lookup here.
+    const shellCommand = shell.findShellCommand(normalizedCommand);
+    let canonicalCommand = shellCommand ? shellCommand.name : normalizedCommand;
     let cmdDef = COMMAND_DEFINITIONS[canonicalCommand];
 
-    if (!cmdDef) {
+    if (!cmdDef && !shellCommand) {
       for (const [key, def] of Object.entries(COMMAND_DEFINITIONS)) {
-        if (def.aliases?.includes(canonicalCommand)) {
+        if (def.aliases?.includes(normalizedCommand)) {
           canonicalCommand = key;
           cmdDef = def;
           break;
@@ -2253,9 +2461,9 @@ const processCommand = (cmdStr) => {
     }
 
     // 5. Malformed Navigation / Common Misspellings
-    if (currentInput === 'cd..' || currentInput === 'cd.' || currentInput === 'cd/') {
+    if (rawInput === 'cd..' || rawInput === 'cd.' || rawInput === 'cd/') {
       const correction =
-        currentInput === 'cd..' ? 'cd ..' : currentInput === 'cd.' ? 'cd .' : 'cd /';
+        rawInput === 'cd..' ? 'cd ..' : rawInput === 'cd.' ? 'cd .' : 'cd /';
       addHistory({ type: 'system', text: `Did you mean: ${correction}` });
       processCommand(correction);
       return;
@@ -2264,11 +2472,12 @@ const processCommand = (cmdStr) => {
     // Check for pending confirmation
     const pendingConfirmation = ctx.getPendingConfirmation();
     if (pendingConfirmation) {
-      if (currentInput === 'y' || currentInput === 'yes') {
+      if (normalizedCommand === 'y' || normalizedCommand === 'yes') {
         if (pendingConfirmation.cmd === 'reset') {
           addHistory({ type: 'system', text: 'INITIATING TOTAL SYSTEM WIPE...' });
           setIsGlitching(true);
           setTimeout(() => {
+            tutorialSession = null;
             ctx.resetGame();
             setIsGlitching(false);
             ctx.onRestart();
@@ -2276,7 +2485,7 @@ const processCommand = (cmdStr) => {
         }
         setPendingConfirmation(null);
         return;
-      } else if (currentInput === 'n' || currentInput === 'no') {
+      } else if (normalizedCommand === 'n' || normalizedCommand === 'no') {
         addHistory({ type: 'system', text: 'RESET ABORTED. THE SYSTEM LIVES.' });
         setPendingConfirmation(null);
         return;
@@ -2286,17 +2495,40 @@ const processCommand = (cmdStr) => {
       }
     }
 
+    // A new command line re-reads the tutorial from the save, so the mirror
+    // only has to stay consistent for the line it belongs to.
+    tutorialSession = null;
+
+    // Engagement bookkeeping — always fresh state, date rollover handled here
+    ctx.ensureNewDay();
+    ctx.recordCommand();
+    ctx.recordVisit(state().currentDir);
+    maybeAdvanceDiscovery();
+
+    // The tutorial starts with whatever the player types first.
+    if (!tutorialState().started && !tutorialState().done) setTutorial({ started: true, step: 0 });
+
+    if (commandDepth === 0) ctx.pushShellHistory(rawInput);
+    commandDepth++;
+
     // CAT TRUST DECAY / HUNGER (Passive)
-    if (state().cat.unlocked && Math.random() < CAT_HUNGER_DECAY_CHANCE) {
+    if (state().cat?.unlocked && Math.random() < CAT_HUNGER_DECAY_CHANCE) {
       ctx.updateCat({ hunger: Math.max(0, state().cat.hunger - CAT_HUNGER_DECAY_AMOUNT) });
     }
 
+    // Both layers read the world through the same snapshot for this line.
+    shell.beginCommand();
+
     let wasHandled = true;
-    if (handlers[canonicalCommand]) {
+    if (shellCommand) {
+      // POSIX layer: pipelines, redirection, globs and ~50 real commands.
+      const result = shell.run(currentInput);
+      wasHandled = result.ok;
+    } else if (handlers[canonicalCommand]) {
       handlers[canonicalCommand](args);
     } else {
       // 1. Check Full String Easter Eggs (Konami, phrases, etc)
-      const normalizedInput = cmdStr.toLowerCase().trim();
+      const normalizedInput = rawInput.toLowerCase();
 
       if (normalizedInput === 'up up down down left right left right b a') {
         if (!state().solvedPuzzles.includes('konami')) {
@@ -2349,8 +2581,8 @@ const processCommand = (cmdStr) => {
 
     // --- Macro recording: capture the command if recording ---
     const recording = state().macroRecording;
-    if (recording && command !== 'record') {
-      const newCommands = [...recording.commands.filter((c) => typeof c === 'string'), cmdStr];
+    if (recording && canonicalCommand !== 'record') {
+      const newCommands = [...recording.commands.filter((c) => typeof c === 'string'), rawInput];
       if (newCommands.length <= MACRO_MAX_RECORDING_COMMANDS) {
         ctx.setMacroRecording({ ...recording, commands: newCommands });
       } else {
@@ -2360,14 +2592,14 @@ const processCommand = (cmdStr) => {
     }
 
     // --- Tutorial progress: advance when the typed command matches the step ---
-    if (wasHandled && isTutorialActive(state().tutorial) && canonicalCommand !== 'tutorial') {
-      const tut = state().tutorial;
+    if (wasHandled && isTutorialActive(tutorialState()) && canonicalCommand !== 'tutorial') {
+      const tut = tutorialState();
       if (matchTutorialStep(tut.step, canonicalCommand, args)) {
         const next = tut.step + 1;
         const finishedStep = TUTORIAL_STEPS[tut.step];
         addHistory({ type: 'output', text: finishedStep.done });
         if (next >= TUTORIAL_STEPS.length) {
-          ctx.updateTutorial({ step: next, done: true });
+          setTutorial({ step: next, done: true });
           ctx.addBits(TUTORIAL_REWARD_BITS, TUTORIAL_ACHIEVEMENT);
           addHistory({
             type: 'achievement',
@@ -2379,14 +2611,16 @@ const processCommand = (cmdStr) => {
             text: 'Where next? Find the cat (/users/explorer), earn Bits, check `story`.',
           });
         } else {
-          ctx.updateTutorial({ step: next });
+          setTutorial({ step: next });
           addHistory({ type: 'system', text: getStepPrompt(next) });
         }
       }
     }
 
     // --- Process tick: age all active processes ---
-    const procs = (state().processes || []).filter((p) => !p.terminated);
+    // Read the live list, not the save: a `kill` earlier in this same line has
+    // not been flushed to React state yet.
+    const procs = shell.liveProcesses().filter((p) => !p.terminated);
     let ticked = procs;
     if (procs.length > 0) {
       ticked = procs.map((p) => tickProcess(p));
@@ -2414,8 +2648,8 @@ const processCommand = (cmdStr) => {
     }
 
     // --- Storm check ---
-    const storm = state().storm;
-    if (!storm.active && Math.random() < STORM_CHANCE) {
+    const storm = state().storm || { active: false };
+    if (!storm.active && chaosEnabled() && Math.random() < STORM_CHANCE) {
       ctx.updateStorm({ active: true, startedAt: Date.now(), survivalBits: 0, glitchCount: 0 });
       addGlitchedHistory({
         type: 'error',
@@ -2445,7 +2679,7 @@ const processCommand = (cmdStr) => {
     }
 
     // --- Radio transmission ---
-    const radio = state().radio;
+    const radio = state().radio || { on: false };
     if (radio.on && Math.random() < RADIO_TRANSMISSION_CHANCE) {
       const station = RADIO_STATIONS.find((s) => s.id === radio.station) || RADIO_STATIONS[0];
       const msg = pickTransmission(station.effect);
@@ -2469,26 +2703,34 @@ const processCommand = (cmdStr) => {
         processCommand(job.command);
       }
     }
+
+    // --- Glitch events: expire or reward, then roll for a new one ---
+    advanceGlitchEvent();
+    pulseGlitchEvent();
+
+    commandDepth--;
     }
 
   // --- Achievement Checks ---
+  // Optional chaining throughout: a hand-edited or truncated save must never
+  // be able to crash the terminal.
   const s = state();
-  
+
   // Speedrunner: completed game in under 30 minutes
-  if (s.stats.gameCompleted && !s.achievements.includes('Speedrunner')) {
-    const playTime = s.stats.gameCompletedTime - (s.stats.gameStartTime || 0);
+  if (s.stats?.gameCompleted && !(s.achievements || []).includes('Speedrunner')) {
+    const playTime = (s.stats.gameCompletedTime || 0) - (s.stats.gameStartTime || 0);
     if (playTime < ACHIEVEMENT_SPEEDRUNNER_TIME_MS) {
       addHistory({ type: 'achievement', text: '[ACHIEVEMENT UNLOCKED] Speedrunner' });
     }
   }
 
   // Pacifist: completed game with zero kills
-  if (s.stats.gameCompleted && (s.stats.killsCount || 0) === 0 && !s.achievements.includes('Pacifist')) {
+  if (s.stats?.gameCompleted && (s.stats.killsCount || 0) === 0 && !(s.achievements || []).includes('Pacifist')) {
     addHistory({ type: 'achievement', text: '[ACHIEVEMENT UNLOCKED] Pacifist' });
   }
 
   // Completionist: 100% bestiary
-  if (!s.achievements.includes('Completionist')) {
+  if (!(s.achievements || []).includes('Completionist')) {
     const b = s.bestiary && Object.keys(s.bestiary).length ? s.bestiary : initBestiary();
     const pct = discoveryPercent(b);
     if (pct >= 100) {
@@ -2497,14 +2739,21 @@ const processCommand = (cmdStr) => {
   }
 
   // Storm Chaser: survived 5 storms
-  if ((s.stats.stormSurvivals || 0) >= ACHIEVEMENT_STORM_CHASER_COUNT && !s.achievements.includes('Storm Chaser')) {
+  if ((s.stats?.stormSurvivals || 0) >= ACHIEVEMENT_STORM_CHASER_COUNT && !(s.achievements || []).includes('Storm Chaser')) {
     addHistory({ type: 'achievement', text: '[ACHIEVEMENT UNLOCKED] Storm Chaser' });
   }
 
   // Radio Head: caught 100 radio transmissions
-  if ((s.stats.radioCatches || 0) >= ACHIEVEMENT_RADIO_HEAD_COUNT && !s.achievements.includes('Radio Head')) {
+  if ((s.stats?.radioCatches || 0) >= ACHIEVEMENT_RADIO_HEAD_COUNT && !(s.achievements || []).includes('Radio Head')) {
     addHistory({ type: 'achievement', text: '[ACHIEVEMENT UNLOCKED] Radio Head' });
   }
+
+  // Time-based halves of the new systems, driven by the UI on a timer.
+  processCommand.tick = () => {
+    advanceGlitchEvent();
+    pulseGlitchEvent();
+  };
+  processCommand.syncLeaderboard = () => syncLeaderboard(false);
 
   return processCommand;
 };

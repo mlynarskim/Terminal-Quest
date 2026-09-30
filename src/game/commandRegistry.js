@@ -1,207 +1,113 @@
 /**
  * Command Registry for Terminal Quest
- * Defines all available commands, their aliases, and unlock conditions.
+ *
+ * Only grid-native commands live here — everything POSIX is defined in
+ * `src/game/shell/` and injected at the bottom of this file, so `help` and
+ * alias resolution always agree with what the shell can actually execute.
  */
 
-export const COMMAND_DEFINITIONS = {
-  // CORE COMMANDS
+import { shellCommandDefinitions } from './shell/tables';
+
+export const GRID_COMMAND_DEFINITIONS = {
+  // CORE
   help: {
-    description: 'Display available commands',
-    aliases: ['?', 'commands', 'guide'],
-    unlocked: true,
-  },
-  ls: {
-    description: 'List directory contents',
-    aliases: ['dir', 'list', 'show'],
-    unlocked: true,
-  },
-  cd: {
-    description: 'Change current directory',
-    aliases: ['goto', 'move', 'enter'],
-    unlocked: true,
-  },
-  pwd: {
-    description: 'Print working directory',
-    aliases: ['whereami', 'path'],
-    unlocked: true,
-  },
-  cat: {
-    description: 'Read file content',
-    aliases: ['read', 'open', 'view'],
+    description: 'List every command — grid verbs and shell commands',
+    aliases: ['?'],
     unlocked: true,
   },
   clear: {
-    description: 'Clear terminal screen',
-    aliases: ['cls', 'reset'],
+    description: 'Clear the terminal screen (reset wipes progress instead)',
+    aliases: ['cls'],
+    unlocked: true,
+  },
+  reset: {
+    description: 'Wipe all progress and achievements (asks for confirmation)',
+    aliases: [],
+    unlocked: true,
+  },
+  calm: {
+    description: 'Toggle grid chaos: calm [on|off|toggle]',
+    aliases: ['still', 'quiet'],
     unlocked: true,
   },
   save: {
-    description: 'Save game progress to a local file',
-    aliases: ['export', 'backup'],
+    description: 'Export progress to a JSON file',
+    aliases: ['backup'],
     unlocked: true,
   },
   load: {
-    description: 'Load game progress from a local file',
+    description: 'Import progress from a JSON file',
     aliases: ['import'],
     unlocked: true,
   },
 
-  // GAMEPLAY COMMANDS
+  // FEATURE 1 — LEADERBOARD
+  leaderboard: {
+    description: 'Global scoreboard: leaderboard [me|submit|name <handle>|sync]',
+    aliases: ['board', 'ladder', 'top10', 'scores'],
+    unlocked: true,
+  },
+
+  // FEATURE 2 — LORE JOURNAL
+  lore: {
+    description: 'Read the lore journal: lore [id|all]',
+    aliases: ['journal', 'chronicle', 'records'],
+    unlocked: true,
+  },
+
+  // FEATURE 3 — GLITCH EVENTS
+  glitch: {
+    description: 'Glitch event status: glitch [list|force]',
+    aliases: ['anomaly'],
+    unlocked: true,
+  },
+
+  // ECONOMY
   buy: {
-    description: 'Purchase items from the bits market',
-    aliases: ['shop', 'get', 'purchase', 'acquire'],
+    description: 'Purchase items: buy box|cat_food|decoder|key|theme_<id>',
+    aliases: ['shop'],
     unlocked: true,
   },
   bits: {
-    description: 'Check bit balance',
-    aliases: ['balance', 'money', 'wallet'],
+    description: 'Check your Bit balance',
+    aliases: ['balance', 'wallet'],
     unlocked: true,
   },
   inventory: {
     description: 'Show collected items',
-    aliases: ['items', 'bag', 'inv'],
+    aliases: ['items', 'inv'],
     unlocked: true,
   },
   achievements: {
     description: 'Show unlocked achievements',
-    aliases: ['awards', 'badges', 'accolades'],
+    aliases: ['awards', 'badges'],
+    unlocked: true,
+  },
+  combine: {
+    description: 'Craft an item: combine <item1> <item2>',
+    aliases: ['merge', 'craft'],
     unlocked: true,
   },
 
-  // ENGAGEMENT COMMANDS
+  // PROGRESS
   daily: {
     description: 'Show and claim the daily daemon quests',
-    aliases: ['quest', 'missions', 'dailies', 'chores'],
+    aliases: ['quest', 'missions', 'dailies'],
+    unlocked: true,
+  },
+  weekly: {
+    description: "This week's challenge and its local board",
+    aliases: ['challenge', 'week'],
     unlocked: true,
   },
   stats: {
-    description: 'Show session statistics and bit flow graph',
-    aliases: ['report', 'sysinfo', 'recap'],
+    description: 'Session statistics (--graph for the bit-flow chart)',
+    aliases: ['report', 'recap'],
     unlocked: true,
   },
   rank: {
-    description: 'Show your grid rank based on lifetime bits earned',
-    aliases: ['level', 'tier', 'title'],
-    unlocked: true,
-  },
-  tips: {
-    description: 'Display a random operational tip',
-    aliases: ['hint', 'usefultip'],
-    unlocked: true,
-  },
-  tutorial: {
-    description: 'Interactive onboarding: tutorial [restart|skip]',
-    aliases: ['intro', 'start-here', 'onboarding'],
-    unlocked: true,
-  },
-  time: {
-    description: 'Show current system time and phase of day',
-    aliases: ['clock', 'now'],
-    unlocked: true,
-  },
-  edit: {
-    description: 'Create or overwrite a personal memo: edit [name] [content]',
-    aliases: ['write', 'memo', 'echo-to'],
-    unlocked: true,
-  },
-  notes: {
-    description: 'List your personal memos',
-    aliases: ['memos', 'reminders'],
-    unlocked: true,
-  },
-  rm: {
-    description: 'Delete a personal memo: rm memo [name]',
-    aliases: ['delete-memo', 'erase'],
-    unlocked: true,
-  },
-  play: {
-    description: 'Play a terminal minigame: play [crash|leak] [bet]',
-    aliases: ['game', 'mini'],
-    unlocked: true,
-  },
-  guess: {
-    description: 'Submit an answer during a crash game',
-    aliases: ['answer', 'submit'],
-    unlocked: true,
-  },
-  catch: {
-    description: 'Catch a packet during a leak stream',
-    aliases: ['grab', 'snag'],
-    unlocked: true,
-  },
-  stop: {
-    description: 'Stop the active minigame and collect winnings',
-    aliases: ['collect', 'cashout', 'end'],
-    unlocked: true,
-  },
-  theme: {
-    description: 'List themes or equip one: theme [name]',
-    aliases: ['skin', 'colors'],
-    unlocked: true,
-  },
-  story: {
-    description: 'Show the main arc status and repair protocol info',
-    aliases: ['arc', 'plot', 'objective'],
-    unlocked: true,
-  },
-  restore: {
-    description: 'Execute the final system restoration protocol: restore [rewrite|preserve]',
-    aliases: ['finalize', 'rebuild'],
-    unlocked: false,
-    requirement: (state) => state.story?.stage === 1 && (state.story?.repairedSectors || 0) >= 4,
-    discoveryHint: 'SYSTEM: final restoration is not yet available. Complete sector repair first.',
-  },
-
-  // UNLOCKABLE COMMANDS
-  decode: {
-    description: 'Process binary files',
-    aliases: ['decrypt_bin', 'binary'],
-    unlocked: false,
-    requirement: (state) => state.inventory.includes('decoder'),
-    discoveryHint: 'SYSTEM: Binary patterns detected. Hardware required for [decode].',
-  },
-  decrypt: {
-    description: 'Decrypt .enc files',
-    aliases: ['unlock_file'],
-    unlocked: false,
-    requirement: (state) => state.inventory.includes('key'),
-    discoveryHint: 'SYSTEM: Encryption recognized. Master [key] required for [decrypt].',
-  },
-  combine: {
-    description: 'Combine two items: combine [item1] [item2]',
-    aliases: ['merge', 'craft', 'fuse'],
-    unlocked: true,
-  },
-  ask: {
-    description: 'Ask the daemon a question: ask [query]',
-    aliases: ['daemon', 'question', 'query'],
-    unlocked: true,
-  },
-  cron: {
-    description: 'Schedule recurring commands: cron add [cmd] [minutes]',
-    aliases: ['schedule', 'timer'],
-    unlocked: true,
-  },
-  record: {
-    description: 'Record a macro: record [name], record --stop',
-    aliases: ['macro', 'rec'],
-    unlocked: true,
-  },
-  radio: {
-    description: 'Tune into grid radio: radio [on|off|tune|stations]',
-    aliases: ['tune', 'broadcast'],
-    unlocked: true,
-  },
-  recompile: {
-    description: 'Prestige: reset world for permanent bonus',
-    aliases: ['prestige', 'reset+'],
-    unlocked: false,
-    requirement: (state) => state.story?.stage === 2,
-    discoveryHint: 'SYSTEM: recompile unavailable. Complete the grid restoration first.',
-  },
-  weekly: {
-    description: "View this week's challenge and leaderboard",
-    aliases: ['challenge', 'week'],
+    description: 'Your grid rank based on lifetime bits earned',
+    aliases: ['level', 'tier'],
     unlocked: true,
   },
   bestiary: {
@@ -209,99 +115,207 @@ export const COMMAND_DEFINITIONS = {
     aliases: ['gallery', 'codex', 'encyclopedia'],
     unlocked: true,
   },
-  sudo: {
-    description: 'Execute command with elevated privileges',
-    aliases: ['admin', 'root'],
-    unlocked: true, // Always available but requires knowledge
-  },
-
-  // OS INTERACTION COMMANDS
-  ps: {
-    description: 'Show active system processes',
-    aliases: ['top', 'tasks', 'processes'],
+  tutorial: {
+    description: 'Guided onboarding: tutorial [restart|skip]',
+    aliases: ['intro', 'onboarding'],
     unlocked: true,
   },
-  kill: {
-    description: 'Terminate a process for Bits: kill <pid>',
-    aliases: ['terminate', 'slay'],
+  tips: {
+    description: 'Display a random operational tip',
+    aliases: ['hint'],
     unlocked: true,
   },
-  run: {
-    description: 'Spawn a system process: run [monitor|stress|shadow|idle]',
-    aliases: ['spawn', 'exec'],
+  story: {
+    description: 'Main arc status and repair protocol info',
+    aliases: ['arc', 'plot'],
     unlocked: true,
   },
-  storm: {
-    description: 'Show grid storm status',
-    aliases: ['weather', 'skies'],
-    unlocked: true,
-  },
-  install: {
-    description: 'Install available system modules',
-    aliases: ['setup', 'add'],
-    unlocked: true,
-  },
-  scan: {
-    description: 'Scan for system anomalies',
-    aliases: ['seek', 'probe'],
+  restore: {
+    description: 'Final restoration protocol: restore rewrite|preserve',
+    aliases: ['finalize', 'rebuild'],
     unlocked: false,
-    requirement: (state) => state.inventory.includes('scanner') || state.bits > 500,
+    requirement: (state) => state.story?.stage === 1 && (state.story?.repairedSectors || 0) >= 4,
+    discoveryHint: 'SYSTEM: final restoration is not yet available. Complete sector repair first.',
   },
-  search: {
-    description: 'Search the filesystem for a pattern',
-    aliases: ['find', 'lookup'],
-    unlocked: true,
+  recompile: {
+    description: 'Prestige: reset the arc for a permanent bonus',
+    aliases: ['prestige'],
+    unlocked: false,
+    requirement: (state) => state.story?.stage === 2,
+    discoveryHint: 'SYSTEM: recompile unavailable. Complete the grid restoration first.',
   },
   repair: {
-    description: 'Repair corrupted sectors (main arc)',
-    aliases: ['fix', 'patch', 'heal'],
+    description: 'Repair one corrupted sector (main arc)',
+    aliases: ['fix', 'patch'],
     unlocked: false,
     requirement: (state) => (state.story?.stage || 0) >= 1,
     discoveryHint:
       "SYSTEM: repair protocol offline. find the fragments and earn the cat's trust first.",
   },
-  status: {
-    description: 'Show current system health',
-    aliases: ['info', 'health'],
-    unlocked: true,
+
+  // CIPHERS
+  decrypt: {
+    description: 'Decrypt an .enc file',
+    aliases: ['unlock_file'],
+    unlocked: false,
+    requirement: (state) => state.inventory.includes('key') || state.inventory.includes('decoder'),
+    discoveryHint: 'SYSTEM: Encryption recognized. A [key] or [decoder] is required for [decrypt].',
   },
-  talk: {
-    description: 'Communicating with the interface',
-    aliases: ['say', 'chat', 'hello'],
-    unlocked: true,
+  decode: {
+    description: 'Process a binary file',
+    aliases: ['decrypt_bin', 'binary'],
+    unlocked: false,
+    requirement: (state) => state.inventory.includes('decoder'),
+    discoveryHint: 'SYSTEM: Binary patterns detected. Hardware required for [decode].',
   },
+  scan: {
+    description: 'Scan the grid for anomalies',
+    aliases: [],
+    unlocked: false,
+    requirement: (state) => state.inventory.includes('scanner') || state.bits > 500,
+    discoveryHint: 'SYSTEM: scan needs hardware. Buy a [scanner] or hold more than 500 Bits.',
+  },
+
+  // THE CAT
   pet: {
-    description: 'Friendly interaction with entities',
-    aliases: ['touch', 'pat'],
+    description: 'Pet the cat (or the box it is hiding in)',
+    aliases: ['pat'],
     unlocked: true,
   },
   feed: {
-    description: 'Give food to the cat',
-    aliases: ['eat', 'food'],
+    description: 'Give cat food to the cat',
+    aliases: [],
     unlocked: false,
     requirement: (state) => state.inventory.includes('cat_food') || state.cat.unlocked,
+    discoveryHint: 'SYSTEM: the cat is hungry. buy cat_food first.',
+  },
+  talk: {
+    description: 'Talk to the cat or to the system',
+    aliases: ['say'],
+    unlocked: true,
   },
   look: {
-    description: 'Examine entities or files',
-    aliases: ['inspect', 'examine'],
+    description: 'Look at the cat',
+    aliases: ['examine'],
     unlocked: true,
   },
   follow: {
-    description: 'Follow the digital cat',
-    aliases: ['trail', 'track'],
+    description: 'Follow the cat to the next objective',
+    aliases: ['track'],
     unlocked: false,
     requirement: (state) => state.cat.trust >= 50,
+    discoveryHint: 'SYSTEM: the cat will not lead you anywhere yet. Trust is too low.',
   },
   listen: {
-    description: 'Listen to the system walls',
-    aliases: ['eavesdrop'],
+    description: 'Listen to what the grid says in the walls',
+    aliases: [],
     unlocked: false,
     requirement: (state) => state.cat.trust >= 80,
+    discoveryHint: 'SYSTEM: there is only static until the cat trusts you.',
+  },
+
+  // WORLD
+  ask: {
+    description: 'Ask the daemon: ask <question>',
+    aliases: ['daemon', 'question'],
+    unlocked: true,
+  },
+  radio: {
+    description: 'Grid radio: radio on|off|tune <station>|stations',
+    aliases: ['broadcast'],
+    unlocked: true,
+  },
+  storm: {
+    description: 'Grid storm status',
+    aliases: ['skies'],
+    unlocked: true,
+  },
+  install: {
+    description: 'Install a system module',
+    aliases: ['setup'],
+    unlocked: true,
+  },
+  status: {
+    description: 'Current system health report',
+    aliases: ['health', 'systeminfo'],
+    unlocked: true,
+  },
+  ping: {
+    description: 'Ping the loopback interface',
+    aliases: [],
+    unlocked: true,
+  },
+  recover: {
+    description: 'Reboot the session back to the root directory',
+    aliases: ['reboot', 'restart'],
+    unlocked: true,
+  },
+  sudo: {
+    description: 'Run a command with elevated privileges: sudo <command>',
+    aliases: ['admin', 'root'],
+    unlocked: true,
+  },
+
+  // AUTOMATION
+  cron: {
+    description: 'Schedule a recurring command: cron add <cmd> <minutes>',
+    aliases: ['schedule'],
+    unlocked: true,
+  },
+  record: {
+    description: 'Record a macro: record <name> | record --stop',
+    aliases: ['macro', 'rec'],
+    unlocked: true,
+  },
+  play: {
+    description: 'Play a minigame or macro: play crash|leak|snake|2048|memory|<macro>',
+    aliases: ['game', 'mini'],
+    unlocked: true,
+  },
+  guess: {
+    description: 'Answer during a crash game',
+    aliases: ['answer', 'submit'],
+    unlocked: true,
+  },
+  catch: {
+    description: 'Catch a packet during a leak stream',
+    aliases: ['grab'],
+    unlocked: true,
+  },
+  stop: {
+    description: 'End the active minigame and collect winnings',
+    aliases: ['collect', 'cashout'],
+    unlocked: true,
+  },
+
+  // PERSONAL
+  edit: {
+    description: 'Write a file quickly: edit <name> <text> (or use echo > file)',
+    aliases: ['memo'],
+    unlocked: true,
+  },
+  notes: {
+    description: 'List the files you have written',
+    aliases: ['memos'],
+    unlocked: true,
+  },
+  theme: {
+    description: 'List themes or equip one: theme [name]',
+    aliases: ['skin', 'colors'],
+    unlocked: true,
   },
 };
 
+/** Grid commands first, then every real shell command with its aliases. */
+export const COMMAND_DEFINITIONS = {
+  ...GRID_COMMAND_DEFINITIONS,
+  ...Object.fromEntries(
+    shellCommandDefinitions().map((def) => [def.name, { ...def, name: undefined }])
+  ),
+};
+
 /**
- * Intent mapping for natural language style inputs
+ * Intent mapping for natural language style inputs.
  */
 export const INTENT_MAP = {
   'go back': 'cd ..',
@@ -315,10 +329,10 @@ export const INTENT_MAP = {
   'what can i do': 'help',
   'who are you': 'talk',
   'are you alive': 'talk',
-  'hack nasa': 'sudo cat core.sys',
+  'hack nasa': 'sudo cat /system/core.sys',
   'make coffee': 'install coffee_module',
   'where am i': 'pwd',
-  'delete everything': 'sudo rm -rf',
+  'delete everything': 'sudo rm -rf /',
   'look around': 'ls',
   'see files': 'ls',
   'show files': 'ls',
@@ -329,4 +343,10 @@ export const INTENT_MAP = {
   hi: 'talk',
   reboot: 'recover',
   restart: 'recover',
+  'wipe save': 'reset',
+  'wipe my progress': 'reset',
+  'delete my save': 'reset',
+  'show the journal': 'lore',
+  'show the board': 'leaderboard',
+  'how am i doing': 'leaderboard me',
 };

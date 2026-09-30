@@ -14,14 +14,26 @@ A retro terminal mystery game. Explore, solve puzzles, befriend a digital cat.
 
 ### What you'll actually do:
 
+**It's a real shell first**
+- 69 real commands: `ls -la`, `cd -`, `grep -ri`, `find . -name "*.enc"`, `ps aux`, `kill -9 PID`
+- Pipes (`cat x | grep y | wc -l`), redirection (`echo hi > note.txt`), globs (`*.enc`), quoting, `&&`/`||`
+- `man` for anything, `history` that persists, `alias`, `export`
+- Windows/PowerShell names too: `dir`, `type FILE`, `copy`, `del`, `findstr`, `tasklist`
+- The filesystem is writable: create files and `rm` them again
+
 **Explore & Solve**
-- Navigate a virtual filesystem with `ls`, `cd`, `cat`, `search`
+- Navigate with `ls`, `cd`, `cat`, `tree`, `find`, `grep`
 - Find hidden files with `ls -a`
 - Solve puzzles: binary decoding, decryption, sudo challenges
 - Read logs, uncover lore, discover hidden directories
 
+**Three new systems**
+- **Leaderboard** — a global scoreboard (Upstash-backed) that falls back to local rival agents; top 10 pays Bits
+- **Lore journal** — 25 entries in 6 chapters that unlock by exploring, cracking ciphers and befriending the cat
+- **Glitch events** — the grid corrupts itself at random; keep typing to survive them
+
 **Befriend the Digital Cat**
-- Find the cat in `/users/explorer`
+- Buy a `box`, `meow`, and the cat is yours
 - `feed` it (needs cat_food), `pet` it, `talk` to it
 - Build trust to unlock fragments — 3 fragments unlock the repair arc
 

@@ -2,17 +2,22 @@ import { Terminal as TerminalIcon } from 'lucide-react';
 import { OVERLOAD_BIT_THRESHOLD } from '../game/constants';
 import { computeRank } from '../game/ranks';
 import { prestigeTitle } from '../game/prestige';
+import { activeEvent } from '../game/glitchEvents';
+import { GAME_VERSION } from '../game/constants';
 
 const StatusBar = ({ state }) => {
   const rank = computeRank(state.stats);
   const prestige = state.prestige || 0;
   const stormActive = state.storm?.active;
   const radioOn = state.radio?.on;
+  const glitch = activeEvent(state);
+  const handle = state.profile?.name || 'anonymous';
   return (
     <div className="flex justify-between items-center px-4 py-1 bg-(--bg-color) border-b border-(--text-secondary) text-[10px] uppercase tracking-[2px] z-50">
       <div className="flex items-center gap-2">
         <TerminalIcon size={12} className="text-(--text-primary)" />
-        <span>TERMINAL QUEST v0.1.7</span>
+        <span>TERMINAL QUEST v{GAME_VERSION}</span>
+        {glitch && <span className="text-(--text-error) animate-pulse">[GLITCH]</span>}
         {stormActive && <span className="text-(--text-error) animate-pulse">[STORM]</span>}
         {radioOn && (
           <span className="text-(--text-bits)">
@@ -33,7 +38,7 @@ const StatusBar = ({ state }) => {
           </div>
         )}
         <div>
-          USER: <span className="text-(--text-primary)">explorer</span>
+          USER: <span className="text-(--text-primary)">{handle}</span>
         </div>
       </div>
       <div className="flex gap-6 items-center">

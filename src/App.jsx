@@ -1,20 +1,29 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useGameState } from './hooks/useGameState';
-import { resolvePath, getEntry } from './game/fileSystem';
+import { getEntry } from './game/fileSystem';
 import { Search, ShieldAlert, Award } from 'lucide-react';
 import { BootSequence, StartScreen } from './components/Onboarding';
 import StatusBar from './components/StatusBar';
 import TerminalPanel from './components/TerminalPanel';
 import FileIcon from './components/FileIcon';
 import { createCommandProcessor } from './game/commandProcessor';
-import { createGlitchedWriter } from './game/glitchedHistory';
 import { getContextualHint } from './game/hintEngine';
 import { repairStatus, endingInfo } from './game/story';
 import { getTutorialIntro } from './game/tutorial';
 import { getObjective } from './game/objective';
 import { mergedBestiary, discoveryPercent, totalEntries, discoveredCount } from './game/bestiary';
 import { getWeeklyChallenge, scoreWeekly } from './game/weekly';
+import { createFsView } from './game/fsView';
+import { buildBoard, computeScore } from './game/leaderboard';
+import {
+  journalProgress,
+  LORE_CATEGORIES,
+  LORE_ENTRIES,
+  isDiscovered,
+  refreshJournal,
+} from './game/loreJournal';
+import { activeEvent } from './game/glitchEvents';
 import { prestigeTitle } from './game/prestige';
 import MobileGameControls from './components/MobileGameControls';
 import { sounds } from './lib/audioSystem';
@@ -35,6 +44,8 @@ import {
   COMMAND_LATENCY_MAX_MS,
   DELAY_SHORT_MS,
   DELAY_MEDIUM_MS,
+  IDLE_TICK_INTERVAL_MS,
+  GLITCH_EVENT_MIN_COMMANDS,
 } from './game/constants';
 
 export default function App() {
@@ -74,6 +85,21 @@ export default function App() {
     setEncrypted,
     updateWeekly,
     updateTutorial,
+    setFs,
+    writeFile,
+    updateProfile,
+    updateLeaderboard,
+    updateJournal,
+    addJournalEntry,
+    updateGlitch,
+    pushShellHistory,
+    clearShellHistory,
+    updateSettings,
+    incrementKills,
+    incrementStormSurvivals,
+    incrementRadioCatches,
+    setGameStartTime,
+    setGameCompleted,
   } = useGameState();
 
   // Safety check for invalid directory (e.g. from old saves)
@@ -97,6 +123,8 @@ export default function App() {
   const fileInputRef = useRef(null);
   const pendingConfirmationRef = useRef(null);
   const stateRef = useRef(state);
+  const seenRef = useRef(new Set());
+
 
   // Reflect latest state/confirmation into refs outside of render
   useEffect(() => {
@@ -107,13 +135,10 @@ export default function App() {
     pendingConfirmationRef.current = pendingConfirmation;
   }, [pendingConfirmation]);
 
+  // System messages from the UI stay clean on purpose: the corruption belongs
+  // to the grid's answers, not to its own commentary.
   const addGlitchedHistory = useMemo(
-    () =>
-      createGlitchedWriter(
-        addHistory,
-        () => sounds.error(),
-        () => sounds.achievement()
-      ),
+    () => (entry) => addHistory(entry),
     [addHistory]
   );
 
@@ -163,6 +188,21 @@ export default function App() {
       setEncrypted,
       updateWeekly,
       updateTutorial,
+      setFs,
+      writeFile,
+      updateProfile,
+      updateLeaderboard,
+      updateJournal,
+      addJournalEntry,
+      updateGlitch,
+      pushShellHistory,
+      clearShellHistory,
+      updateSettings,
+      incrementKills,
+      incrementStormSurvivals,
+      incrementRadioCatches,
+      setGameStartTime,
+      setGameCompleted,
       triggerFileSelect: () => fileInputRef.current?.click(),
       onRestart: () => setPhase('boot'),
     });
@@ -200,6 +240,21 @@ export default function App() {
     setEncrypted,
     updateWeekly,
     updateTutorial,
+    setFs,
+    writeFile,
+    updateProfile,
+    updateLeaderboard,
+    updateJournal,
+    addJournalEntry,
+    updateGlitch,
+    pushShellHistory,
+    clearShellHistory,
+    updateSettings,
+    incrementKills,
+    incrementStormSurvivals,
+    incrementRadioCatches,
+    setGameStartTime,
+    setGameCompleted,
   ]);
 
   const processCommand = (cmdStr) => processCommandRef.current(cmdStr);
@@ -275,11 +330,13 @@ export default function App() {
     if (phase !== 'game') return;
 
     const earlyGlitch = setTimeout(() => {
+      if (stateRef.current.settings?.chaos === false) return;
       setIsGlitching(true);
       setTimeout(() => setIsGlitching(false), GLITCH_DURATION_MS);
     }, EARLY_GLITCH_DELAY_MS);
 
     const triggerGlitch = () => {
+      if (stateRef.current.settings?.chaos === false) return;
       if (Math.random() < 0.05) {
         setIsGlitching(true);
         setTimeout(() => setIsGlitching(false), GLITCH_DURATION_MS);
@@ -291,6 +348,45 @@ export default function App() {
       clearInterval(interval);
     };
   }, [phase]);
+
+  // Idle systems: expire or refresh glitch events and the leaderboard relay
+  // even when the player stops typing.
+  useEffect(() => {
+    if (phase !== 'game') return;
+    const processor = processCommandRef.current;
+    const tick = () => processor?.tick?.();
+    const first = setTimeout(tick, IDLE_TICK_INTERVAL_MS);
+    const interval = setInterval(tick, IDLE_TICK_INTERVAL_MS);
+    const sync = setTimeout(() => processor?.syncLeaderboard?.(), 4_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(interval);
+      clearTimeout(sync);
+    };
+  }, [phase]);
+
+  // The clock starts when the player actually reaches the grid.
+  useEffect(() => {
+    if (phase === 'game' && !state.stats?.gameStartTime) setGameStartTime();
+  }, [phase, state.stats?.gameStartTime, setGameStartTime]);
+
+  // Lore journal: entries unlock by playing, so discovery is watched, not scripted.
+  useEffect(() => {
+    if (phase !== 'game') return;
+    const fresh = refreshJournal(state).filter((id) => !seenRef.current.has(id));
+    if (fresh.length === 0) return;
+    for (const id of fresh) {
+      seenRef.current.add(id);
+      addJournalEntry(id);
+    }
+    const entry = LORE_ENTRIES.find((e) => e.id === fresh[fresh.length - 1]);
+    addHistory({ type: 'output', text: `LORE JOURNAL UPDATED — ${entry.title.toUpperCase()}` });
+    addHistory({
+      type: 'system',
+      text: `JOURNAL ${LORE_CATEGORIES[entry.category].name}: ${entry.body}`,
+    });
+    addHistory({ type: 'system', text: `READ IT: lore ${entry.id}` });
+  }, [phase, state, addJournalEntry, addHistory]);
 
   // Cat presence events
   useEffect(() => {
@@ -419,6 +515,12 @@ export default function App() {
   const weeklyScore = scoreWeekly(state, weeklyInfo.challenge);
   const radioStation = (state.radio?.station || 'lofi').toUpperCase();
   const objective = getObjective(state);
+  const journal = journalProgress(state);
+  const board = buildBoard(state, state.leaderboard?.remote || []);
+  const myRank = board.rank || 1;
+  const myScore = board.yourEntry?.score ?? computeScore(state);
+  const glitchEvent = activeEvent(state);
+  const fsChildren = createFsView(state).children(state.currentDir, { all: true });
 
   return (
     <AnimatePresence mode="wait">
@@ -429,7 +531,7 @@ export default function App() {
           key="game"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className={`crt-container h-screen flex flex-col font-mono selection:bg-(--text-primary) selection:text-black overflow-hidden relative ${isGlitching ? 'glitch-line opacity-80' : ''} ${activeSkin}`}
+          className={`crt-container h-screen flex flex-col font-mono selection:bg-(--text-primary) selection:text-black overflow-hidden relative ${isGlitching ? 'glitch-line opacity-80' : ''} ${glitchEvent ? 'glitch-active' : ''} ${activeSkin}`}
         >
           <input
             type="file"
@@ -451,6 +553,10 @@ export default function App() {
             </div>
           )}
 
+          {glitchEvent && (
+            <div className="glitch-overlay absolute inset-0 z-[1900] pointer-events-none bg-(--text-error) mix-blend-screen" />
+          )}
+
           <StatusBar state={state} />
 
           <div className="flex-1 flex overflow-hidden p-2 gap-2">
@@ -470,7 +576,7 @@ export default function App() {
                 {state.history.map((line, i) => (
                   <div
                     key={i}
-                    className={`terminal-line mb-1 leading-relaxed ${
+                    className={`terminal-line whitespace-pre-wrap mb-1 leading-relaxed ${
                       line?.type === 'error'
                         ? 'text-(--text-error)'
                         : line?.type === 'system'
@@ -545,6 +651,107 @@ export default function App() {
                       {objective.progress.current}/{objective.progress.total}
                     </div>
                   )}
+                </div>
+              </TerminalPanel>
+
+              <TerminalPanel title="LORE_JOURNAL">
+                <div className="text-[10px] space-y-1">
+                  <div>
+                    RECOVERED:{' '}
+                    <span className="text-(--text-bits)">
+                      {journal.discovered}/{journal.total} ({journal.percent}%)
+                    </span>
+                  </div>
+                  <div className="w-full bg-(--text-secondary)/30 h-1 mt-1">
+                    <div
+                      className="h-full bg-(--text-warning)"
+                      style={{ width: `${journal.percent}%` }}
+                    />
+                  </div>
+                  <div className="opacity-70 max-h-[70px] overflow-y-auto">
+                    {Object.entries(LORE_CATEGORIES).map(([id, category]) => {
+                      const entries = LORE_ENTRIES.filter((entry) => entry.category === id);
+                      const found = entries.filter((entry) => isDiscovered(state, entry.id)).length;
+                      return (
+                        <div key={id} className="flex justify-between">
+                          <span>{category.name}</span>
+                          <span className="opacity-60">
+                            {found}/{entries.length}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-1 italic opacity-50">"lore" opens the index</div>
+                </div>
+              </TerminalPanel>
+
+              <TerminalPanel title="LEADERBOARD">
+                <div className="text-[10px] space-y-1">
+                  <div className="flex justify-between">
+                    <span>YOUR SCORE</span>
+                    <span className="text-(--text-bits)">{myScore}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>POSITION</span>
+                    <span className="text-(--text-warning)">#{myRank}</span>
+                  </div>
+                  <div className="flex justify-between text-[8px] opacity-60">
+                    <span>RELAY</span>
+                    <span>
+                      {state.leaderboard?.status === 'remote' ? 'GLOBAL' : 'LOCAL AGENTS'}
+                    </span>
+                  </div>
+                  <div className="mt-1 opacity-80">
+                    {board.entries.slice(0, 4).map((entry, index) => (
+                      <div
+                        key={entry.name}
+                        className={`flex justify-between ${
+                          entry.origin === 'you' ? 'text-(--text-warning)' : ''
+                        }`}
+                      >
+                        <span className="truncate">
+                          {index + 1}. {entry.name}
+                        </span>
+                        <span>{entry.score}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-1 italic opacity-50">"leaderboard submit" to publish</div>
+                </div>
+              </TerminalPanel>
+
+              <TerminalPanel title="GLITCH_EVENT">
+                <div className="text-[10px] space-y-1">
+                  {glitchEvent ? (
+                    <>
+                      <div className="text-(--text-error) animate-pulse glitch-text">
+                        {glitchEvent.name}
+                      </div>
+                      <div className="opacity-80">
+                        COMMANDS {glitchEvent.commands}/
+                        {GLITCH_EVENT_MIN_COMMANDS}
+                      </div>
+                      <div className="w-full bg-(--text-secondary)/30 h-1 mt-1">
+                        <div
+                          className="h-full bg-(--text-error)"
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              (glitchEvent.commands / GLITCH_EVENT_MIN_COMMANDS) * 100
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="opacity-60">no active event — keep exploring</div>
+                  )}
+                  <div className="flex justify-between text-[8px] opacity-60">
+                    <span>SURVIVED</span>
+                    <span>{(state.glitch?.survived || []).length}</span>
+                  </div>
+                  <div className="mt-1 italic opacity-50">"glitch" shows the clock</div>
                 </div>
               </TerminalPanel>
 
@@ -783,35 +990,29 @@ export default function App() {
           <div className="p-2 gap-2 min-h-[120px] flex flex-col md:flex-row">
             <TerminalPanel title="FILE_SYSTEM_VISUALIZER" className="md:flex-[2] w-full">
               <div className="flex gap-6 overflow-x-auto py-2 px-4 scrollbar-hide">
-                {getEntry(state.currentDir)?.children.map((name, i) => {
-                  const childPath = resolvePath(state.currentDir, name);
-                  const entry = getEntry(childPath);
-                  const type = entry?.type || 'file';
-
-                  return (
-                    <FileIcon
-                      key={i}
-                      type={type}
-                      name={name}
-                      isHidden={entry?.isHidden}
-                      onClick={() => {
-                        sounds.execute();
-                        const cmd = type === 'dir' ? `cd ${childPath}` : `cat ${childPath}`;
-                        addHistory({ type: 'input', text: `${state.currentDir}> ${cmd}` });
-                        setLastActivity(Date.now());
-                        setIsProcessing(true);
-                        setTimeout(
-                          () => {
-                            processCommand(cmd);
-                            setIsProcessing(false);
-                          },
-                          COMMAND_LATENCY_MIN_MS +
-                            Math.random() * (COMMAND_LATENCY_MAX_MS - COMMAND_LATENCY_MIN_MS)
-                        );
-                      }}
-                    />
-                  );
-                })}
+                {fsChildren.map((entry, i) => (
+                  <FileIcon
+                    key={i}
+                    type={entry.type}
+                    name={entry.name}
+                    isHidden={entry.isHidden || !isDiscovered(state, entry.name)}
+                    onClick={() => {
+                      sounds.execute();
+                      const cmd = entry.type === 'dir' ? `cd ${entry.path}` : `cat ${entry.path}`;
+                      addHistory({ type: 'input', text: `${state.currentDir}> ${cmd}` });
+                      setLastActivity(Date.now());
+                      setIsProcessing(true);
+                      setTimeout(
+                        () => {
+                          processCommand(cmd);
+                          setIsProcessing(false);
+                        },
+                        COMMAND_LATENCY_MIN_MS +
+                          Math.random() * (COMMAND_LATENCY_MAX_MS - COMMAND_LATENCY_MIN_MS)
+                      );
+                    }}
+                  />
+                ))}
               </div>
             </TerminalPanel>
 

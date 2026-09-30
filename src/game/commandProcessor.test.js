@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createCommandProcessor } from '../game/commandProcessor';
+import { hydrateState } from '../hooks/useGameState';
 
 const makeInitialState = () => ({
   bits: 0,
@@ -36,6 +37,13 @@ const makeInitialState = () => ({
   encrypted: {},
   weekly: { lastClaimedDate: null },
   tutorial: { started: false, step: 0, done: false },
+  fs: { files: {}, dirs: {}, removed: [] },
+  profile: { name: null },
+  leaderboard: { remote: [], lastSync: null, status: 'local', best: 0, seenRank: null },
+  journal: { entries: {} },
+  glitch: { active: null, survived: [], lastAt: null, count: 0 },
+  shell: { history: [] },
+  settings: { chaos: true },
 });
 
 const createHarness = () => {
@@ -159,6 +167,45 @@ const createHarness = () => {
     updateTutorial: vi.fn((patch) => {
       state = { ...state, tutorial: { ...state.tutorial, ...patch } };
     }),
+    updateSettings: vi.fn((patch) => {
+      state = { ...state, settings: { ...state.settings, ...patch } };
+    }),
+    incrementKills: vi.fn(() => {
+      state = {
+        ...state,
+        stats: { ...state.stats, killsCount: (state.stats.killsCount || 0) + 1 },
+      };
+    }),
+    setFs: vi.fn((fs) => {
+      state = { ...state, fs };
+    }),
+    writeFile: vi.fn((path, content) => {
+      const files = { ...(state.fs?.files || {}), [path]: { content, created: 0, modified: 0 } };
+      state = { ...state, fs: { ...state.fs, files } };
+    }),
+    updateProfile: vi.fn((patch) => {
+      state = { ...state, profile: { ...state.profile, ...patch } };
+    }),
+    updateLeaderboard: vi.fn((patch) => {
+      state = { ...state, leaderboard: { ...state.leaderboard, ...patch } };
+    }),
+    updateJournal: vi.fn((patch) => {
+      state = { ...state, journal: { ...state.journal, ...patch } };
+    }),
+    addJournalEntry: vi.fn((id) => {
+      const entries = { ...(state.journal?.entries || {}), [id]: Date.now() };
+      state = { ...state, journal: { ...state.journal, entries } };
+    }),
+    updateGlitch: vi.fn((patch) => {
+      state = { ...state, glitch: { ...state.glitch, ...patch } };
+    }),
+    pushShellHistory: vi.fn((command) => {
+      const history = state.shell?.history || [];
+      state = { ...state, shell: { ...state.shell, history: [...history, command] } };
+    }),
+    clearShellHistory: vi.fn(() => {
+      state = { ...state, shell: { ...state.shell, history: [] } };
+    }),
   };
 
   const emitCount = { input: 0, output: 0, error: 0, system: 0, achievement: 0 };
@@ -238,13 +285,64 @@ describe('command processor', () => {
     expect(h.actions.setDir).toHaveBeenCalledWith('/home');
   });
 
-  it('ls lists visible files', () => {
+  it('ls lists visible files one per line and hides dotfiles', () => {
     const h = createHarness();
     h.process('ls');
-    const last = h.emitted[h.emitted.length - 1];
-    expect(last.type).toBe('output');
-    expect(last.text).toContain('readme.txt');
-    expect(last.text).not.toContain('.hidden');
+    const names = h.emitted.filter((e) => e.type === 'output').map((e) => e.text);
+    expect(names).toContain('readme.txt');
+    expect(names).toContain('note.txt');
+    expect(names).not.toContain('.hidden');
+    expect(names).not.toContain('fragment_01.tmp');
+  });
+
+  it('ls -l prints permissions, owner and size', () => {
+    const h = createHarness();
+    h.process('ls -l readme.txt');
+    const line = h.emitted.find((e) => e.text.includes('readme.txt'));
+    expect(line.text).toContain('-rw-r--r--');
+    expect(line.text).toContain('explorer');
+  });
+
+  it('supports pipes: cat file | wc -l', () => {
+    const h = createHarness();
+    h.process('cat readme.txt | wc -c');
+    const line = h.emitted[h.emitted.length - 1];
+    expect(line.type).toBe('output');
+    expect(Number(line.text.trim())).toBeGreaterThan(0);
+  });
+
+  it('redirects stdout into a new file', () => {
+    const h = createHarness();
+    h.process('echo hello grid > note2.txt');
+    expect(h.state().fs.files['/home/note2.txt'].content).toContain('hello grid');
+    h.process('cat note2.txt');
+    expect(h.emitted[h.emitted.length - 1].text).toContain('hello grid');
+  });
+
+  it('refuses to delete files the grid owns', () => {
+    const h = createHarness();
+    h.process('rm readme.txt');
+    expect(h.emitted.some((e) => e.text.includes('Operation not permitted'))).toBe(true);
+    expect(h.state().fs.removed).not.toContain('/home/readme.txt');
+  });
+
+  it('removes files the player created', () => {
+    const h = createHarness();
+    h.process('echo scratch > scratch.txt');
+    h.process('rm scratch.txt');
+    expect(h.state().fs.removed).toContain('/home/scratch.txt');
+  });
+
+  it('grep searches file contents', () => {
+    const h = createHarness();
+    h.process('grep -i welcome readme.txt');
+    expect(h.emitted.some((e) => e.text.includes('Welcome to Terminal Quest'))).toBe(true);
+  });
+
+  it('find locates files by pattern', () => {
+    const h = createHarness();
+    h.process('find / -name "*.enc"');
+    expect(h.emitted.some((e) => e.text.includes('/home/secrets.txt.enc'))).toBe(true);
   });
 
   it('ls -a reveals hidden entries and awards the puzzle', () => {
@@ -282,17 +380,25 @@ describe('command processor', () => {
     expect(h.actions.incrementFailures).toHaveBeenCalled();
   });
 
-  it('sudo clear requires Y confirmation and wipes game', () => {
+  it('reset requires Y confirmation and wipes game', () => {
     vi.useFakeTimers();
     const h = createHarness();
     h.actions.addBits(500);
-    h.process('sudo clear');
+    h.process('reset');
     expect(h.emitCount.error).toBeGreaterThan(0);
 
     h.process('y');
     vi.advanceTimersByTime(3000);
     expect(h.state().bits).toBe(0);
     expect(h.onRestart).toHaveBeenCalled();
+  });
+
+  it('clear only wipes the screen, it does not delete the save', () => {
+    const h = createHarness();
+    h.actions.addBits(500);
+    h.process('clear');
+    expect(h.actions.clearHistory).toHaveBeenCalled();
+    expect(h.state().bits).toBe(500);
   });
 
   it('pending confirmation rejects non-Y/N responses', () => {
@@ -303,31 +409,29 @@ describe('command processor', () => {
     expect(h.emitCount.error).toBeGreaterThan(countBefore);
   });
 
-  it('"search" is its own command (filesystem search), not an alias of scan', () => {
+  it('scan is requirement gated, find is the real search', () => {
     const h = createHarness();
-    h.process('search readme');
-    expect(h.emitted.some((e) => e.text.includes('SCANNING FILESYSTEM FOR "README"'))).toBe(true);
-    // The scan handler output should NOT be produced by "search"
-    expect(h.emitted.some((e) => e.text.includes('Scanning filesystem'))).toBe(false);
+    h.process('find / -name readme.txt');
+    expect(h.emitted.some((e) => e.text.includes('/home/readme.txt'))).toBe(true);
   });
 
-  it('edit writes a memo and cat reads it back', () => {
+  it('edit writes a real file and cat reads it back', () => {
     const h = createHarness();
-    h.process('edit plans find the third fragment');
-    expect(h.state().memos.plans).toBe('find the third fragment');
-    h.process('cat plans');
+    h.process('edit plans.txt find the third fragment');
+    expect(h.state().fs.files['/home/plans.txt'].content).toBe('find the third fragment');
+    h.process('cat plans.txt');
     expect(h.emitted[h.emitted.length - 1].text).toBe('find the third fragment');
   });
 
-  it('notes lists memos and rm memo deletes one', () => {
+  it('notes lists the files the player wrote and rm memo deletes one', () => {
     const h = createHarness();
-    h.process('edit a one');
-    h.process('edit b two');
+    h.process('edit a.txt one');
+    h.process('edit b.txt two');
     h.process('notes');
-    expect(h.emitted.some((e) => e.text.startsWith('[memo] a:'))).toBe(true);
-    expect(h.emitted.some((e) => e.text.startsWith('[memo] b:'))).toBe(true);
-    h.process('rm memo a');
-    expect(h.state().memos.a).toBeUndefined();
+    expect(h.emitted.some((e) => e.text.includes('/home/a.txt'))).toBe(true);
+    expect(h.emitted.some((e) => e.text.includes('/home/b.txt'))).toBe(true);
+    h.process('rm memo a.txt');
+    expect(h.state().fs.removed).toContain('/home/a.txt');
   });
 
   it('theme requires ownership and equips owned skins', () => {
@@ -382,10 +486,17 @@ describe('command processor', () => {
     expect(h.emitted.some((e) => e.text.includes('BIT_SMITH'))).toBe(true);
   });
 
-  it('time reports the phase of day', () => {
+  it('date reports the time and the phase of day', () => {
     const h = createHarness();
-    h.process('time');
-    expect(h.emitted.some((e) => e.text.includes('PHASE OF DAY'))).toBe(true);
+    h.process('date');
+    expect(h.emitted.some((e) => e.text.includes('GRID PHASE'))).toBe(true);
+  });
+
+  it('date +%Y-%m-%d formats the date', () => {
+    const h = createHarness();
+    h.process('date +%Y-%m-%d');
+    const line = h.emitted[h.emitted.length - 1];
+    expect(line.text).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   it('story gates repair but reveals the arc', () => {
@@ -397,16 +508,210 @@ describe('command processor', () => {
     expect(h.emitted.some((e) => e.text.includes('repair protocol offline'))).toBe(true);
   });
 
-  it('ps shows active processes', () => {
+  it('ps prints a real process table', () => {
     const h = createHarness();
     h.process('ps');
-    expect(h.emitted.some((e) => e.text.includes('NO ACTIVE PROCESSES'))).toBe(true);
+    expect(h.emitted.some((e) => e.text.includes('PID TTY'))).toBe(true);
+    expect(h.emitted.some((e) => e.text.includes('quest-shell'))).toBe(true);
   });
 
-  it('kill rejects invalid pid', () => {
+  it('ps aux prints the wide format', () => {
     const h = createHarness();
-    h.process('kill abc');
-    expect(h.emitted.some((e) => e.text.includes('PID must be numeric'))).toBe(true);
+    h.process('ps aux');
+    expect(h.emitted.some((e) => e.text.includes('COMMAND'))).toBe(true);
+  });
+
+  it('killing a process twice does not resurrect or double-pay it', () => {
+    const h = createHarness();
+    h.process('run monitor');
+    const pid = h.state().processes[0].pid;
+    h.process(`kill ${pid}`);
+    const afterFirst = h.state().processes[0].terminated;
+    expect(afterFirst).toBe(true);
+
+    h.process(`kill ${pid}`);
+    expect(h.state().processes[0].terminated).toBe(true);
+    expect(h.emitted.some((e) => e.text.includes('No such process'))).toBe(true);
+  });
+
+  it('kill rejects an unknown pid', () => {
+    const h = createHarness();
+    h.process('kill 9999');
+    expect(h.emitted.some((e) => e.text.includes('No such process'))).toBe(true);
+  });
+
+  it('kill terminates a process and pays bits', () => {
+    const h = createHarness();
+    h.process('run monitor');
+    const pid = h.state().processes[0].pid;
+    h.process(`kill ${pid}`);
+    expect(h.emitted.some((e) => e.text.includes('terminated'))).toBe(true);
+    expect(h.actions.incrementKills).toHaveBeenCalled();
+  });
+
+  // ── Feature 1: leaderboard ──
+
+  it('leaderboard shows a board with the player on it', () => {
+    const h = createHarness();
+    h.process('leaderboard');
+    const board = h.emitted
+      .filter((e) => e.type === 'output')
+      .map((e) => e.text)
+      .join('\n');
+    expect(board).toContain('GRID LEADERBOARD');
+    expect(board).toContain('YOUR POSITION');
+    expect(board).toContain('AGENT');
+  });
+
+  it('leaderboard name sanitises and stores the handle', () => {
+    const h = createHarness();
+    h.process('leaderboard name  Zero Cool! ');
+    expect(h.state().profile.name).toBe('Zero Cool');
+    h.process('leaderboard name x');
+    expect(h.emitted.some((e) => e.text.includes('USAGE: leaderboard name'))).toBe(true);
+  });
+
+  it('leaderboard me explains the score', () => {
+    const h = createHarness();
+    h.setState((s) => ({ ...s, stats: { ...s.stats, bitsEarned: 250 } }));
+    h.process('leaderboard me');
+    const line = h.emitted.find((e) => e.text.includes('LEADERBOARD SCORE:'));
+    expect(Number(line.text.split(': ')[1])).toBeGreaterThanOrEqual(250);
+    expect(h.emitted.some((e) => e.text.includes('lifetime bits'))).toBe(true);
+  });
+
+  it('leaderboard top n limits the table', () => {
+    const h = createHarness();
+    h.process('leaderboard 3');
+    const board = h.emitted.find((e) => e.text.includes('GRID LEADERBOARD')).text;
+    const rows = board.split('\n').filter((line) => /^\s+\d+\s+/.test(line));
+    expect(rows).toHaveLength(3);
+  });
+
+  // ── Feature 2: lore journal ──
+
+  it('lore prints the index and hides unrecovered entries', () => {
+    const h = createHarness();
+    h.process('lore');
+    const index = h.emitted
+      .filter((e) => e.type === 'output')
+      .map((e) => e.text)
+      .join('\n');
+    expect(index).toContain('LORE JOURNAL // 0/');
+    expect(index).toContain('???');
+  });
+
+  it('lore refuses an entry that is not recovered yet', () => {
+    const h = createHarness();
+    h.process('lore readme');
+    expect(h.emitted.some((e) => e.text.includes('NOT RECOVERED YET'))).toBe(true);
+  });
+
+  it('lore reads a recovered entry once and pays for it', () => {
+    const h = createHarness();
+    h.setState((s) => ({ ...s, journal: { entries: { readme: Date.now() } } }));
+    h.process('lore readme');
+    expect(h.emitted.some((e) => e.text.includes('A NOTE LEFT ON THE DESKTOP'))).toBe(true);
+    expect(h.state().bits).toBeGreaterThan(0);
+    expect(h.state().journal.read.readme).toBeDefined();
+
+    h.setState((s) => ({ ...s, bits: 0 }));
+    h.process('lore readme');
+    expect(h.state().bits).toBe(0);
+  });
+
+  it('lore all dumps the recovered entries', () => {
+    const h = createHarness();
+    h.setState((s) => ({ ...s, journal: { entries: { readme: Date.now() } } }));
+    h.process('lore all');
+    expect(h.emitted.some((e) => e.text.includes('DUMPING 1 ENTRIES'))).toBe(true);
+  });
+
+  // ── Feature 3: glitch events ──
+
+  it('glitch reports status and hides unknown signatures', () => {
+    const h = createHarness();
+    h.process('glitch');
+    const status = h.emitted
+      .filter((e) => e.type === 'output')
+      .map((e) => e.text)
+      .join('\n');
+    expect(status).toContain('GLITCH EVENTS');
+    expect(status).toContain('ACTIVE: none');
+
+    h.process('glitch list');
+    expect(h.emitted.some((e) => e.text.includes('???????'))).toBe(true);
+  });
+
+  it('glitch force opens an event that commands can survive', () => {
+    const h = createHarness();
+    h.process('glitch force');
+    expect(h.state().glitch.active).not.toBeNull();
+    expect(h.emitted.some((e) => e.text.includes('Keep typing to survive'))).toBe(true);
+
+    const id = h.state().glitch.active.id;
+    // surviving means typing enough commands inside the window
+    h.process('pwd');
+    expect(h.state().glitch.active.commands).toBeGreaterThanOrEqual(1);
+    h.setState((s) => ({
+      ...s,
+      glitch: { ...s.glitch, active: { ...s.glitch.active, expiresAt: Date.now() - 1 } },
+    }));
+    h.process('pwd');
+    expect(h.state().glitch.survived).toContain(id);
+    expect(h.state().glitch.active).toBeNull();
+  });
+
+  it('glitch events are lost when the player stops typing', () => {
+    const h = createHarness();
+    h.process('glitch force');
+    h.setState((s) => ({
+      ...s,
+      glitch: {
+        ...s.glitch,
+        active: { ...s.glitch.active, commands: 0, expiresAt: Date.now() - 1 },
+      },
+    }));
+    h.process('pwd');
+    expect(h.state().glitch.active).toBeNull();
+    expect(h.state().glitch.survived).toEqual([]);
+    expect(h.emitted.some((e) => e.text.includes('GLITCH EVENT LOST'))).toBe(true);
+  });
+
+  it('calm stops the grid from corrupting itself and rolling events', () => {
+    const h = createHarness();
+    h.process('calm off');
+    expect(h.state().settings.chaos).toBe(false);
+    expect(h.emitted.some((e) => e.text.includes('CALM GRID'))).toBe(true);
+
+    // forced events still work on a calm grid
+    h.process('glitch force --brief');
+    expect(h.state().glitch.active).not.toBeNull();
+  });
+
+  it('calm is persisted across commands and rejects nonsense', () => {
+    const h = createHarness();
+    h.process('calm');
+    expect(h.state().settings.chaos).toBe(false);
+    h.process('calm on');
+    expect(h.state().settings.chaos).toBe(true);
+    h.process('calm sideways');
+    expect(h.state().settings.chaos).toBe(true);
+    expect(h.emitted.some((e) => e.text.includes('USAGE: calm'))).toBe(true);
+  });
+
+  it('a hand-edited save still drives the terminal once hydrated', () => {
+    const h = createHarness();
+    const partial = hydrateState({
+      bits: 5,
+      currentDir: '/logs',
+      cat: { trust: 3 },
+    });
+    h.setState(() => partial);
+    expect(() => h.process('ps')).not.toThrow();
+    expect(h.emitted.some((e) => e.text.includes('PID TTY'))).toBe(true);
+    expect(() => h.process('leaderboard')).not.toThrow();
+    expect(() => h.process('lore')).not.toThrow();
   });
 
   it('combine rejects unknown combinations', () => {

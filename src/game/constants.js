@@ -36,6 +36,9 @@ export const PUZZLE_PRIORITY = {
   CIPHER: 4,
   WEEKLY: 3,
   RADIO: 2,
+  JOURNAL: 2,
+  LEADERBOARD: 2,
+  GLITCH: 3,
   MACRO: 1,
 };
 
@@ -213,3 +216,51 @@ export const GAME_MEMORY_TIME_LIMIT_MS = 60_000;
 export const GAME_SNAKE_GRID_SIZE = 16;
 export const GAME_SNAKE_SPEED_MS = 200;
 export const GAME_2048_GRID_SIZE = 4;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Shell layer
+// ──────────────────────────────────────────────────────────────────────────────
+export const GAME_VERSION = '0.2.0';
+export const SHELL_HISTORY_LIMIT = 200;
+export const IDLE_TICK_INTERVAL_MS = 8_000;
+export const SHELL_MAX_FILES_WARN = 40;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Leaderboard
+// ──────────────────────────────────────────────────────────────────────────────
+export const LEADERBOARD_SIZE = 25;
+export const LEADERBOARD_SYNC_INTERVAL_MS = 300_000;
+export const LEADERBOARD_SCORE = {
+  bitsPerPoint: 1,
+  achievement: 250,
+  journal: 400,
+  bestiary: 150,
+  sector: 1_500,
+  glitch: 300,
+};
+export const LEADERBOARD_LOCAL_BOT_COUNT = 14;
+export const LEADERBOARD_RIVAL_RATE_PER_HOUR = 42;
+export const LEADERBOARD_MAX_SCORE = 5_000_000;
+export const LEADERBOARD_MIN_NAME_LENGTH = 2;
+export const LEADERBOARD_MAX_NAME_LENGTH = 18;
+export const LEADERBOARD_REWARD_TOP10 = 250;
+export const LEADERBOARD_REWARD_TOP1 = 750;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Lore journal
+// ──────────────────────────────────────────────────────────────────────────────
+export const LORE_ENTRY_REWARD = 60;
+export const LORE_FULL_BONUS = 1_000;
+export const LORE_NEW_ENTRY_LINES = 2;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Glitch events
+// ──────────────────────────────────────────────────────────────────────────────
+export const GLITCH_EVENT_CHECK_INTERVAL_MS = 90_000;
+export const GLITCH_EVENT_CHANCE_PER_COMMAND = 0.035;
+export const GLITCH_EVENT_COOLDOWN_MS = 150_000;
+export const GLITCH_EVENT_WINDOW_MS = 45_000;
+export const GLITCH_EVENT_MIN_COMMANDS = 2;
+export const GLITCH_EVENT_SURVIVE_REWARD = 40;
+export const GLITCH_EVENT_ACHIEVEMENT_COUNT = 3;
+export const GLITCH_EVENT_MAX_COST = 25;

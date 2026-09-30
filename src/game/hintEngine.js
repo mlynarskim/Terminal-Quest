@@ -126,6 +126,38 @@ const PUZZLES = {
       'HINT: LO-FI calms the grid; STATIC invites stranger signals.',
     ],
   },
+  JOURNAL: {
+    id: 'journal',
+    priority: PUZZLE_PRIORITY.JOURNAL,
+    prereq: (state) =>
+      Object.keys(state.journal?.entries || {}).length > 0 &&
+      Object.keys(state.journal?.read || {}).length < 2,
+    hints: [
+      'HINT: the grid keeps a record of what you find. "lore" opens the journal.',
+      'HINT: "lore <id>" reads an entry and pays Bits for it. Unread entries are marked *.',
+      'HINT: reading files, cracking ciphers and surviving glitches all write new entries.',
+    ],
+  },
+  LEADERBOARD: {
+    id: 'leaderboard',
+    priority: PUZZLE_PRIORITY.LEADERBOARD,
+    prereq: (state) => (state.stats?.bitsEarned || 0) > 150 && !state.profile?.name,
+    hints: [
+      'HINT: someone is keeping score. "leaderboard" shows the board and your place on it.',
+      'HINT: "leaderboard name <handle>" names you, "leaderboard submit" publishes your score.',
+      'HINT: top 10 pays 250 Bits, first place pays 750. the board resets your ambition weekly.',
+    ],
+  },
+  GLITCH: {
+    id: 'glitch',
+    priority: PUZZLE_PRIORITY.GLITCH,
+    prereq: (state) => (state.glitch?.count || 0) > 0 && (state.glitch?.survived || []).length === 0,
+    hints: [
+      'HINT: an event opened and closed while you were still. "glitch" shows what is running.',
+      'HINT: when a glitch fires, keep typing — commands are what it wants.',
+      'HINT: three survived events earn the "Glitch Surfer" achievement.',
+    ],
+  },
   MACRO: {
     id: 'macro',
     priority: PUZZLE_PRIORITY.MACRO,

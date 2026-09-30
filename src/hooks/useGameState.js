@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { generateDailyQuests, getTodayStr } from '../game/dailyQuest';
-import { DAILY_HISTORY_LIMIT } from '../game/constants';
+import { DAILY_HISTORY_LIMIT, GAME_VERSION, SHELL_HISTORY_LIMIT } from '../game/constants';
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 const INITIAL_STATE = {
   bits: 0,
@@ -11,8 +11,8 @@ const INITIAL_STATE = {
   currentDir: '/home',
   unlockedFiles: [],
   history: [
-    { type: 'system', text: 'TERMINAL QUEST OS v0.1.7' },
-    { type: 'system', text: 'SYSTEM READY. TYPE "help" FOR COMMANDS.' },
+    { type: 'system', text: `TERMINAL QUEST OS v${GAME_VERSION}` },
+    { type: 'system', text: 'SYSTEM READY. TYPE "help" FOR A MAP, "man" FOR DETAILS.' },
   ],
   solvedPuzzles: [],
   consecutiveFailures: 0,
@@ -55,6 +55,14 @@ const INITIAL_STATE = {
   encrypted: {},
   weekly: { lastClaimedDate: null },
   tutorial: { started: false, step: 0, done: false },
+  // v8 — real shell layer, leaderboard, lore journal, glitch events
+  fs: { files: {}, dirs: {}, removed: [] },
+  profile: { name: null },
+  leaderboard: { remote: [], lastSync: null, status: 'local', best: 0, seenRank: null },
+  journal: { entries: {} },
+  glitch: { active: null, survived: [], lastAt: null, count: 0 },
+  shell: { history: [] },
+  settings: { chaos: true },
   saveVersion: SAVE_VERSION,
 };
 
@@ -73,13 +81,32 @@ export const isValidState = (data) => {
   );
 };
 
+const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+/** Recursive "fill in what is missing" merge. */
+const mergeMissing = (base, data) => {
+  const out = { ...base };
+  for (const [key, value] of Object.entries(data)) {
+    if (value === undefined) continue;
+    out[key] = isPlainObject(value) && isPlainObject(out[key]) ? mergeMissing(out[key], value) : value;
+  }
+  return out;
+};
+
+/**
+ * Fills in anything a save is missing from the defaults, recursively. A hand
+ * edited, truncated or older save must never be able to crash the game.
+ */
+export const hydrateState = (data) =>
+  isPlainObject(data) ? mergeMissing(INITIAL_STATE, data) : INITIAL_STATE;
+
 const loadInitialState = () => {
   try {
     const saved = localStorage.getItem('terminal_quest_save');
     if (!saved) return INITIAL_STATE;
     const parsed = JSON.parse(saved);
-    const validated = isValidState(parsed) ? parsed : INITIAL_STATE;
-    return migrateSave(validated);
+    if (!isValidState(parsed)) return INITIAL_STATE;
+    return migrateSave(hydrateState(parsed));
   } catch {
     return INITIAL_STATE;
   }
@@ -137,6 +164,26 @@ const migrateSave = (state) => {
       objective: { title: '', detail: '', progress: null }, // handled by getObjective()
     };
   }
+  if (fromVersion < 8) {
+    // v8 turns personal memos into real files, so `ls`, `cat`, `grep` and
+    // friends work on them like they do on everything else.
+    const memos = migrated.memos || {};
+    const files = { ...(migrated.fs?.files || {}) };
+    for (const [name, content] of Object.entries(memos)) {
+      const path = name.startsWith('/') ? name : `/home/${name}`;
+      if (!files[path]) files[path] = { content, created: 0, modified: 0 };
+    }
+    migrated = {
+      ...migrated,
+      fs: { files, dirs: {}, removed: [] },
+      profile: { name: null },
+      leaderboard: { remote: [], lastSync: null, status: 'local', best: 0, seenRank: null },
+      journal: { entries: {} },
+      glitch: { active: null, survived: [], lastAt: null, count: 0 },
+      shell: { history: [] },
+      settings: { chaos: true },
+    };
+  }
 
   migrated.saveVersion = SAVE_VERSION;
   return migrated;
@@ -149,6 +196,7 @@ const mergeNested = (base, incoming) => {
 
 const mergeState = (base, incoming) => {
   if (!isValidState(incoming)) return base;
+  incoming = hydrateState(incoming);
   return {
     ...base,
     ...incoming,
@@ -171,6 +219,17 @@ const mergeState = (base, incoming) => {
     bestiary: incoming.bestiary || base.bestiary,
     encrypted: incoming.encrypted || base.encrypted,
     dailyHistory: Array.isArray(incoming.dailyHistory) ? incoming.dailyHistory : base.dailyHistory,
+    fs: {
+      files: { ...(base.fs?.files || {}), ...(incoming.fs?.files || {}) },
+      dirs: { ...(base.fs?.dirs || {}), ...(incoming.fs?.dirs || {}) },
+      removed: Array.isArray(incoming.fs?.removed) ? incoming.fs.removed : (base.fs?.removed || []),
+    },
+    profile: mergeNested(base.profile, incoming.profile),
+    leaderboard: mergeNested(base.leaderboard, incoming.leaderboard),
+    journal: mergeNested(base.journal, incoming.journal),
+    glitch: mergeNested(base.glitch, incoming.glitch),
+    shell: mergeNested(base.shell, incoming.shell),
+    settings: mergeNested(base.settings, incoming.settings),
   };
 };
 
@@ -621,6 +680,98 @@ export const useGameState = () => {
     })),
   []);
 
+  // --- Writable filesystem (shell redirection, touch, cp, mv, rm) ---
+
+  const setFs = useCallback((fs) => setState((prev) => ({ ...prev, fs })), []);
+
+  const writeFile = useCallback((path, content, append = false) => {
+    setState((prev) => {
+      const files = prev.fs?.files || {};
+      const current = files[path];
+      const next = append && current ? `${current.content}${content}` : content;
+      return {
+        ...prev,
+        fs: {
+          files: {
+            ...files,
+            [path]: {
+              content: next,
+              created: current?.created ?? Date.now(),
+              modified: Date.now(),
+            },
+          },
+          dirs: prev.fs?.dirs || {},
+          removed: (prev.fs?.removed || []).filter((p) => p !== path),
+        },
+      };
+    });
+  }, []);
+
+  // --- Profile (leaderboard handle) ---
+
+  const updateProfile = useCallback(
+    (patch) => setState((prev) => ({ ...prev, profile: { ...prev.profile, ...patch } })),
+    []
+  );
+
+  // --- Leaderboard ---
+
+  const updateLeaderboard = useCallback(
+    (patch) => setState((prev) => ({ ...prev, leaderboard: { ...prev.leaderboard, ...patch } })),
+    []
+  );
+
+  // --- Lore journal ---
+
+  const updateJournal = useCallback(
+    (patch) => setState((prev) => ({ ...prev, journal: { ...prev.journal, ...patch } })),
+    []
+  );
+
+  const addJournalEntry = useCallback((id) => {
+    setState((prev) => {
+      if (prev.journal?.entries?.[id]) return prev;
+      return {
+        ...prev,
+        journal: {
+          ...prev.journal,
+          entries: { ...(prev.journal?.entries || {}), [id]: Date.now() },
+        },
+      };
+    });
+  }, []);
+
+  // --- Glitch events ---
+
+  const updateGlitch = useCallback(
+    (patch) => setState((prev) => ({ ...prev, glitch: { ...prev.glitch, ...patch } })),
+    []
+  );
+
+  // --- Player settings (calm grid, chaos) ---
+
+  const updateSettings = useCallback(
+    (patch) => setState((prev) => ({ ...prev, settings: { ...prev.settings, ...patch } })),
+    []
+  );
+
+  // --- Shell history (`history`) ---
+
+  const pushShellHistory = useCallback((command) => {
+    setState((prev) => {
+      const history = prev.shell?.history || [];
+      return {
+        ...prev,
+        shell: { ...prev.shell, history: [...history, command].slice(-SHELL_HISTORY_LIMIT) },
+      };
+    });
+  }, []);
+
+  const clearShellHistory = useCallback(
+    () => setState((prev) => ({ ...prev, shell: { ...prev.shell, history: [] } })),
+    []
+  );
+
   return {
     state,
     addHistory,
@@ -662,5 +813,15 @@ export const useGameState = () => {
     incrementKills,
     incrementStormSurvivals,
     incrementRadioCatches,
+    setFs,
+    writeFile,
+    updateProfile,
+    updateLeaderboard,
+    updateJournal,
+    addJournalEntry,
+    updateGlitch,
+    pushShellHistory,
+    clearShellHistory,
+    updateSettings,
   };
 };
